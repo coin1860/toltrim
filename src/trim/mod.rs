@@ -14,7 +14,11 @@ use crate::ansi;
 
 /// The rule version recorded with each Gain Record. Bump it when a rule changes
 /// shape, so savings measured under different rules are never silently compared.
-pub const RULES_VERSION: i64 = 1;
+///
+/// 2: the Maven failure extract learned that a plugin banner bounds a context
+/// window, so a compile-error extract no longer carries compile chatter (ticket
+/// 07). Extracts produced under version 1 measured different bytes.
+pub const RULES_VERSION: i64 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
