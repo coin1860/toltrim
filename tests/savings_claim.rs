@@ -297,7 +297,10 @@ const NOT_AN_INVOCATION: &[(&str, &str)] = &[(
 // ---------------------------------------------------------------------------
 
 fn fixture_path(name: &str) -> PathBuf {
-    Path::new(MANIFEST_DIR).join("tests").join("fixtures").join(name)
+    Path::new(MANIFEST_DIR)
+        .join("tests")
+        .join("fixtures")
+        .join(name)
 }
 
 fn fixture_bytes(name: &str) -> Vec<u8> {
@@ -411,9 +414,9 @@ fn published_claim(readme: &str) -> (String, usize) {
         };
         return (
             format!("{rate}%"),
-            count
-                .parse()
-                .unwrap_or_else(|e| panic!("cannot parse the published Invocation count {count:?}: {e}")),
+            count.parse().unwrap_or_else(|e| {
+                panic!("cannot parse the published Invocation count {count:?}: {e}")
+            }),
         );
     }
     panic!("README.md publishes no `Savings Rate: <n>% (recorded fixtures, <n> Invocations)` line");
@@ -421,17 +424,18 @@ fn published_claim(readme: &str) -> (String, usize) {
 
 #[test]
 fn every_fixture_is_either_an_invocation_or_explicitly_not_one() {
-    let mut files: Vec<String> = fs::read_dir(Path::new(MANIFEST_DIR).join("tests").join("fixtures"))
-        .expect("the fixtures directory is readable")
-        .map(|entry| {
-            entry
-                .expect("a readable directory entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .filter(|name| name.ends_with(".txt"))
-        .collect();
+    let mut files: Vec<String> =
+        fs::read_dir(Path::new(MANIFEST_DIR).join("tests").join("fixtures"))
+            .expect("the fixtures directory is readable")
+            .map(|entry| {
+                entry
+                    .expect("a readable directory entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .filter(|name| name.ends_with(".txt"))
+            .collect();
     files.sort();
 
     let mut known: Vec<String> = INVOCATIONS
@@ -480,18 +484,21 @@ fn the_published_savings_rate_is_the_one_the_fixtures_produce() {
     let expected_rate = savings_rate(recomputed.tokens_in, recomputed.tokens_out);
 
     assert_eq!(
-        published_count,
-        recomputed.invocations,
+        published_count, recomputed.invocations,
         "README publishes {published_count} Invocations, the manifest has {}",
         recomputed.invocations
     );
     assert_eq!(
-        published_rate, expected_rate,
+        published_rate,
+        expected_rate,
         "README publishes {published_rate} over {} Invocations \
          ({} trimmed, {} preserved; {} Estimated Tokens in, {} out); \
          the fixtures produce {expected_rate}",
-        recomputed.invocations, recomputed.trimmed, recomputed.preserved,
-        recomputed.tokens_in, recomputed.tokens_out
+        recomputed.invocations,
+        recomputed.trimmed,
+        recomputed.preserved,
+        recomputed.tokens_in,
+        recomputed.tokens_out
     );
     // The denominator has to be real: a manifest of empty fixtures would make
     // the division above meaningless.
@@ -598,7 +605,10 @@ fn replay(invocation: &Invocation, label: &str) -> (Output, String) {
     let mut args: Vec<std::ffi::OsString> = vec![program.into_os_string()];
     args.extend(invocation.args.iter().map(std::ffi::OsString::from));
 
-    let replayed = run(&dir, &args.iter().map(|a| a.as_os_str()).collect::<Vec<_>>());
+    let replayed = run(
+        &dir,
+        &args.iter().map(|a| a.as_os_str()).collect::<Vec<_>>(),
+    );
     assert_eq!(
         replayed.status.code(),
         Some(invocation.exit_code),
@@ -695,8 +705,16 @@ fn a_machine_readable_request_is_recorded_as_preserved() {
         fixture_bytes(invocation.fixture),
         "a Machine-Readable Request must arrive byte-identical"
     );
-    assert_eq!(reported(&view, "Estimated Tokens in"), expected_in, "{view}");
-    assert_eq!(reported(&view, "Estimated Tokens out"), expected_out, "{view}");
+    assert_eq!(
+        reported(&view, "Estimated Tokens in"),
+        expected_in,
+        "{view}"
+    );
+    assert_eq!(
+        reported(&view, "Estimated Tokens out"),
+        expected_out,
+        "{view}"
+    );
     assert!(
         view.contains("Commands proxied: 1 (trimmed 0, preserved 1)"),
         "`--porcelain` must count as preserved, not trimmed:\n{view}"

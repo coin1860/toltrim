@@ -47,7 +47,9 @@ const FAMILIES: &[&str] = &[
 
 /// State-changing git subcommands: always Passthrough Commands, never bounded by
 /// a trimming rule (ADR-0008).
-const ALWAYS_PASSTHROUGH: &[&str] = &["add", "commit", "checkout", "pull", "push", "merge", "rebase"];
+const ALWAYS_PASSTHROUGH: &[&str] = &[
+    "add", "commit", "checkout", "pull", "push", "merge", "rebase",
+];
 
 fn run(args: &[&str]) -> Output {
     let mut cmd = Command::new(BIN);
@@ -319,7 +321,9 @@ fn usage_commands() -> BTreeSet<String> {
 fn assert_commands_are_proxied(commands: &BTreeSet<String>, source: &str) {
     for command in commands {
         let words: Vec<String> = command.split_whitespace().map(str::to_owned).collect();
-        let (program, args) = words.split_first().expect("a documented command has a program");
+        let (program, args) = words
+            .split_first()
+            .expect("a documented command has a program");
         let tool = trim::detect(program);
         assert_ne!(
             tool,
