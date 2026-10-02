@@ -15,6 +15,9 @@ name = "toltrim"
 path = "src/main.rs"
 
 [dependencies]
+# Gain Records live in SQLite (ADR-0006). `bundled` compiles the SQLite
+# amalgamation, so there is no system SQLite to find and no network to reach.
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 
 [profile.release]
 lto = true
