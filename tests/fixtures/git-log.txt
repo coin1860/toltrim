@@ -1,0 +1,20 @@
+commit 4cbcb58f0eb38faae723f4921967bfb561adab46
+Author: Alice Example <alice@example.com>
+Date:   Wed Mar 20 11:05:00 2024 +0000
+
+    Rename the module
+
+commit 13c7d32abcfbc99d899acff659f3c0c3e0806c1c
+Author: Alice Example <alice@example.com>
+Date:   Wed Feb 14 17:45:00 2024 +0000
+
+    Fix the parser bug
+    
+    The parser dropped the trailing token when the input ended
+    without a newline. Now it keeps it.
+
+commit 4a9a39cbaf8803d36156831149c34a023731fd6e
+Author: Alice Example <alice@example.com>
+Date:   Tue Jan 2 09:15:00 2024 +0000
+
+    Add the first file

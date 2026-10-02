@@ -1,0 +1,3 @@
+  feature/parser 55b85f4 Work on the parser
+* main           0fec132 [ahead 1, behind 1] Local commit on main
+  release-1.0    d7762f3 [behind 1] Initial commit
