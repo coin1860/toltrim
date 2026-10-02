@@ -22,12 +22,14 @@ fn main() {
     });
 
     let Some(first) = argv.first().map(|a| a.to_string_lossy().into_owned()) else {
-        usage();
+        usage(&mut std::io::stderr());
         std::process::exit(2);
     };
     match first.as_str() {
         "-h" | "--help" => {
-            usage();
+            // Help the caller asked for goes to stdout, so `toltrim --help | less`
+            // works; only the usage printed after a usage *error* goes to stderr.
+            usage(&mut std::io::stdout());
             std::process::exit(0);
         }
         "-V" | "--version" => {
@@ -99,8 +101,11 @@ fn strings(args: &[OsString]) -> Vec<String> {
         .collect()
 }
 
-fn usage() {
-    eprintln!(
+/// Write the usage text to `out`. The caller chooses the stream: help the caller
+/// asked for is output, a usage error is diagnostics.
+fn usage(out: &mut dyn Write) {
+    let _ = write!(
+        out,
         "toltrim {version} — trim command output for coding agents
 
 USAGE:
@@ -122,4 +127,5 @@ OPTIONS:
 ",
         version = env!("CARGO_PKG_VERSION")
     );
+    let _ = out.flush();
 }
