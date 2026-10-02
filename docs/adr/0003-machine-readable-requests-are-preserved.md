@@ -1,0 +1,9 @@
+# Machine-readable requests are never trimmed, and exit codes are always verbatim
+
+When an Invocation asks for a parseable format (`--porcelain`, `-z`, `--color=always`, `--batch-mode`, `-q`) toltrim strips ANSI and removes nothing else. The same preservation applies when a human is piping the output in a terminal — detected as *stdout is not a terminal **and** stdin is a terminal* — because that signal distinguishes a person running `toltrim git log | grep` from an agent capturing output. Exit codes are passed through exactly, with no explanatory rewriting.
+
+**Revised (this is a correction to the original decision).** The first version said "or its output is piped into another program", which is not observable: an agent capturing a child's output is indistinguishable from a pipe, because both leave the child with a non-terminal stdout. Implementing that clause literally — never trim when stdout is not a terminal — would have disabled trimming for the tool's primary use case. Measured in the target agent environment: `stdout is tty: no`, `stdin is tty: no`. The combined criterion above recovers the intent for the human-pipe case; an agent that pipes toltrim's own output (`toltrim git log | head`) is still not detectable, and `--raw` is the escape hatch for it.
+
+**Considered options**: flags only, dropping pipe detection entirely (simplest, but a human piping toltrim in a terminal silently gets a trimmed stream); non-terminal stdout means "never trim" (dead on arrival for the agent case).
+
+**Consequences**: `git diff` exits 1 when there are differences, and `git status --porcelain` uses 0/1 distinctly. An agent-facing proxy that helpfully normalized those would turn "there are changes" into "the command failed", inviting retries or needless rewrites.
