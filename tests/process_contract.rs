@@ -3,22 +3,25 @@
 //! A pure function cannot see an exit code, a byte-exact passthrough, a stdin
 //! that is not a terminal, or a command that never started. Those promises are
 //! only observable by running `toltrim` with a stand-in command, so every test
-//! here spawns the binary cargo built (`CARGO_BIN_EXE_toltrim`) with stand-in
-//! programs written into a uniquely named directory at test time. Nothing in the
-//! worktree is touched, no developer's PATH is searched beyond `/bin/sh`, and
-//! every Invocation points `TOLTRIM_DB` at the test's own directory so a Gain
-//! Record can never land in the developer's real database.
+//! here spawns the binary cargo built (`CARGO_BIN_EXE_toltrim`) with a stand-in
+//! chosen by the platform: on Unix a `#!/bin/sh` script written into a uniquely
+//! named directory at test time, on Windows a name that `PATH` cannot resolve.
+//! Nothing in the worktree is touched, no developer's PATH is searched beyond
+//! `/bin/sh`, and every Invocation points `TOLTRIM_DB` at the test's own
+//! directory so a Gain Record can never land in the developer's real database.
 //!
-//! Stand-ins are `#!/bin/sh` scripts, which is why this file is Unix-only: a
-//! Windows stand-in would need a `cmd` batch shape, and no Windows host was
-//! available to verify one against. On Windows this file therefore compiles to
-//! an empty test binary rather than to an unverified claim.
-#![cfg(unix)]
+//! Most tests are Unix-only because their stand-ins are shell scripts:
+//! `#[cfg(unix)]` guards each of those and the helpers only they use. The one
+//! promise that needs a Windows-specific stand-in — a command that does not
+//! exist — is guarded with `#[cfg(windows)]` and spawns nothing but the binary
+//! itself.
 
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+#[cfg(unix)]
+use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -61,6 +64,7 @@ impl TempDir {
         TempDir { path }
     }
 
+    #[cfg(unix)]
     fn path(&self) -> &Path {
         &self.path
     }
@@ -81,6 +85,7 @@ impl Drop for TempDir {
 ///
 /// The file carries no suffix, so `trim::detect` reads the name itself: a
 /// stand-in named `mvn` is a Proxied Command, and anything else is unknown.
+#[cfg(unix)]
 fn stand_in(dir: &TempDir, name: &str, body: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
 
@@ -178,12 +183,14 @@ fn run_toltrim(dir: &TempDir, args: &[&OsStr], label: &str) -> Finished {
 
 /// The same stand-in run with no toltrim in front of it, which is what "byte
 /// identical" and "verbatim" must be measured against.
+#[cfg(unix)]
 fn run_stand_in(program: &Path, label: &str) -> Finished {
     let mut cmd = Command::new(program);
     cmd.stdin(Stdio::null());
     finish(spawn(cmd, label), label)
 }
 
+#[cfg(unix)]
 #[test]
 fn exit_codes_are_forwarded_verbatim() {
     let dir = TempDir::new("exit-codes");
@@ -214,6 +221,7 @@ fn exit_codes_are_forwarded_verbatim() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn a_command_that_ran_fine_but_exits_non_zero_keeps_its_own_code() {
     // The `git diff` shape: exit 1 means "there are differences", not "the
@@ -242,6 +250,7 @@ fn a_command_that_ran_fine_but_exits_non_zero_keeps_its_own_code() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn an_unknown_command_is_byte_identical_to_running_it_alone() {
     let dir = TempDir::new("byte-identity");
@@ -269,6 +278,7 @@ fn an_unknown_command_is_byte_identical_to_running_it_alone() {
     assert_eq!(proxied.code(), 3);
 }
 
+#[cfg(unix)]
 #[test]
 fn an_unknown_command_keeps_its_stderr_byte_for_byte() {
     let dir = TempDir::new("stderr-identity");
@@ -289,6 +299,7 @@ fn an_unknown_command_keeps_its_stderr_byte_for_byte() {
     assert_eq!(proxied.stdout, direct.stdout);
 }
 
+#[cfg(unix)]
 #[test]
 fn with_no_terminal_on_stdin_an_interactive_command_fails_fast() {
     let dir = TempDir::new("stdin-null");
@@ -315,6 +326,7 @@ fn with_no_terminal_on_stdin_an_interactive_command_fails_fast() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_stdin_pipe_that_is_never_written_does_not_block_the_run() {
     let dir = TempDir::new("stdin-pipe");
@@ -342,6 +354,7 @@ fn a_stdin_pipe_that_is_never_written_does_not_block_the_run() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_command_that_does_not_exist_exits_127_with_one_line_on_stderr() {
     let dir = TempDir::new("missing-command");
@@ -406,6 +419,7 @@ fn a_command_killed_by_signal_n_reports_128_plus_n() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_proxied_command_forwards_stderr_verbatim_while_stdout_is_trimmed() {
     let dir = TempDir::new("maven-stderr");
@@ -454,5 +468,35 @@ fn a_proxied_command_forwards_stderr_verbatim_while_stdout_is_trimmed() {
         proxied.stdout.len() < direct.stdout.len(),
         "the maven stand-in's stdout was not trimmed: {:?}",
         direct.stdout
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn a_command_that_does_not_exist_exits_127_on_windows_too() {
+    let dir = TempDir::new("missing-command-windows");
+    // A bare name, so the direct spawn goes through the Windows lookup, fails,
+    // and reaches the `cmd /c` retry — which starts `cmd.exe` successfully and
+    // reports the missing program itself. That retry's own message is what has
+    // to become the 127, not cmd's exit code (ADR-0009).
+    let program = OsStr::new("definitely-not-a-real-command-toltrim");
+
+    let run = run_toltrim(&dir, &[program], "a command that does not exist on Windows");
+
+    assert_eq!(run.code(), 127);
+    assert!(
+        run.stdout.is_empty(),
+        "toltrim wrote to stdout for a command that never started: {:?}",
+        run.stdout_lossy()
+    );
+    let stderr = run.stderr_lossy();
+    assert_eq!(
+        stderr.lines().count(),
+        1,
+        "expected a single explanatory line, got {stderr:?}"
+    );
+    assert_eq!(
+        stderr, "toltrim: definitely-not-a-real-command-toltrim: not found\n",
+        "the retry's own report must become toltrim's one line"
     );
 }
