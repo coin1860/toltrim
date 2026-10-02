@@ -48,6 +48,10 @@ Estimated Tokens removed, as a share of the original, counted over Proxied
 Commands only.
 _Avoid_: compression ratio, reduction, efficiency
 
+**Savings meter**:
+The bar in the `toltrim gain` view that shows the Savings Rate at a glance.
+_Avoid_: efficiency meter, progress bar
+
 **Machine-Readable Request**:
 An Invocation where the caller asked for a parseable format, or where the output
 is consumed by another program rather than read by an agent.

@@ -123,22 +123,58 @@ fn must_contain(text: &str, needle: &str) {
     assert!(text.contains(needle), "expected {needle:?} in:\n{text}");
 }
 
-/// The numbers of one command's row in the per-command table.
+/// The numbers of one command's row in the per-command table:
+/// rank, count, saved (K/M abbreviated), avg pct.
 #[track_caller]
 fn table_row(view: &str, label: &str) -> Vec<i64> {
     let table = view
-        .split_once("COMMAND")
+        .split_once("By Command")
         .map(|(_, table)| table)
         .unwrap_or_else(|| panic!("no per-command table in:\n{view}"));
-    let prefix = format!("{label} ");
+    // Rows are ` 1.  maven test   ...`: the label is a substring of the line,
+    // and the line's first cell is the rank (a number ending in a dot).
     let line = table
         .lines()
-        .find(|line| line.starts_with(&prefix))
+        .find(|line| {
+            let cells: Vec<&str> = line.split_whitespace().collect();
+            cells.first().is_some_and(|first| first.ends_with('.')) && line.contains(label)
+        })
         .unwrap_or_else(|| panic!("no `{label}` row in:\n{view}"));
-    line.split_whitespace()
-        .skip(label.split_whitespace().count())
-        .map(|cell| cell.parse().expect("a table cell is a number"))
-        .collect()
+    // Skip the rank and the label (which may be two words, e.g. "maven test"):
+    // the first numeric cell after the label is the Count.
+    let cells: Vec<&str> = line.split_whitespace().collect();
+    let label_len = label.split_whitespace().count();
+    let count_index = 1 + label_len; // 0 = rank, 1.. = label
+    let count: i64 = cells[count_index]
+        .parse()
+        .unwrap_or_else(|e| panic!("count cell {:?} in line {line:?}: {e}", cells[count_index]));
+    // The Saved cell may be K/M abbreviated; the Avg% cell carries one decimal.
+    let saved = parse_human(cells[count_index + 1]);
+    let avg: i64 = cells[count_index + 2]
+        .strip_suffix('%')
+        .expect("avg ends in %")
+        .parse::<f64>()
+        .expect("avg is a number")
+        .round() as i64;
+    let rank: i64 = cells[0]
+        .strip_suffix('.')
+        .expect("rank ends in a dot")
+        .parse()
+        .expect("rank");
+    vec![rank, count, saved, avg]
+}
+
+/// The inverse of the view's K/M abbreviation: `1.6K` -> 1600.
+fn parse_human(cell: &str) -> i64 {
+    let (number, multiplier) = if let Some(k) = cell.strip_suffix('K') {
+        (k, 1_000i64)
+    } else if let Some(m) = cell.strip_suffix('M') {
+        (m, 1_000_000i64)
+    } else {
+        return cell.parse().expect("a bare number");
+    };
+    let value: f64 = number.parse().expect("a decimal number");
+    (value * multiplier as f64).round() as i64
 }
 
 fn line_starting_with<'a>(text: &'a str, prefix: &str) -> &'a str {
@@ -161,6 +197,25 @@ fn maven_pass_fixture() -> Vec<u8> {
 /// against the definition rather than against the implementation.
 fn estimated_tokens(bytes: usize) -> i64 {
     (i64::try_from(bytes).expect("a fixture fits in i64") + 3) / 4
+}
+
+/// The view's display format for a token count: K/M abbreviation, one decimal
+/// place dropped when it is zero. Mirrors `toltrim::gain`'s presentation so the
+/// needles below match what the binary prints.
+fn human(value: i64) -> String {
+    let (value, suffix) = if value >= 1_000_000 {
+        (value as f64 / 1_000_000.0, "M")
+    } else if value >= 1_000 {
+        (value as f64 / 1_000.0, "K")
+    } else {
+        return value.to_string();
+    };
+    let text = if (value * 10.0).fract() < f64::EPSILON {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.1}")
+    };
+    format!("{text}{suffix}")
 }
 
 #[test]
@@ -195,18 +250,26 @@ fn one_trimmed_invocation_is_one_proxied_command_with_estimated_tokens_and_a_rat
     must_contain(&text, "Commands proxied: 1 (trimmed 1, preserved 0)");
     must_contain(
         &text,
-        "Passthrough Commands: 0 (excluded from the Savings Rate)",
+        "Passthrough:      0 (excluded from the Savings Rate)",
     );
-    must_contain(&text, &format!("Estimated Tokens in: {tokens_in}"));
-    must_contain(&text, &format!("Estimated Tokens out: {tokens_out}"));
-    must_contain(&text, &format!("Estimated Tokens saved: {saved}"));
+    must_contain(&text, &format!("Input tokens:     {}", human(tokens_in)));
+    must_contain(&text, &format!("Output tokens:    {}", human(tokens_out)));
+    must_contain(
+        &text,
+        &format!("Tokens saved:     {} ({rate})", human(saved)),
+    );
     must_contain(
         &text,
         &format!("Savings Rate: {rate} of the original, over Proxied Commands only"),
     );
     assert_eq!(
         table_row(&text, "maven test"),
-        vec![1, tokens_in, tokens_out, saved],
+        vec![
+            1,
+            1,
+            saved,
+            ((saved as f64 / tokens_in as f64) * 100.0).round() as i64
+        ],
         "view:\n{text}"
     );
 }
@@ -264,27 +327,18 @@ fn a_passthrough_command_is_recorded_counted_separately_and_excluded_from_the_ra
         &["gain"],
     ));
 
-    // Counted separately, and shown: their Estimated Tokens appear, unchanged.
+    // Counted separately, and shown. The new layout has no separate Passthrough
+    // Estimated Tokens line; the record's byte count is still in the database.
     must_contain(&both, "Commands proxied: 1 (trimmed 1, preserved 0)");
     must_contain(
         &both,
-        "Passthrough Commands: 1 (excluded from the Savings Rate)",
+        "Passthrough:      1 (excluded from the Savings Rate)",
     );
-    must_contain(
-        &both,
-        &format!(
-            "Passthrough Estimated Tokens in: {}",
-            estimated_tokens(chatter.len())
-        ),
-    );
+    // The passthrough row saves nothing: its bytes are excluded from the
+    // Savings Rate, so Saved and Avg% are zero by definition.
     assert_eq!(
         table_row(&both, "passthrough"),
-        vec![
-            1,
-            estimated_tokens(chatter.len()),
-            estimated_tokens(chatter.len()),
-            0
-        ],
+        vec![2, 1, 0, 0],
         "view:\n{both}"
     );
 
@@ -293,9 +347,9 @@ fn a_passthrough_command_is_recorded_counted_separately_and_excluded_from_the_ra
     let proxied_lines = |text: &str| {
         [
             line_starting_with(text, "Commands proxied:").to_string(),
-            line_starting_with(text, "Estimated Tokens in:").to_string(),
-            line_starting_with(text, "Estimated Tokens out:").to_string(),
-            line_starting_with(text, "Estimated Tokens saved:").to_string(),
+            line_starting_with(text, "Input tokens:").to_string(),
+            line_starting_with(text, "Output tokens:").to_string(),
+            line_starting_with(text, "Tokens saved:").to_string(),
             line_starting_with(text, "Savings Rate:").to_string(),
         ]
     };
@@ -316,7 +370,7 @@ fn a_lone_passthrough_command_leaves_the_rate_not_yet_measurable() {
     must_contain(&text, "Commands proxied: 0 (trimmed 0, preserved 0)");
     must_contain(
         &text,
-        "Passthrough Commands: 1 (excluded from the Savings Rate)",
+        "Passthrough:      1 (excluded from the Savings Rate)",
     );
     must_contain(
         &text,
@@ -325,12 +379,7 @@ fn a_lone_passthrough_command_leaves_the_rate_not_yet_measurable() {
     assert!(!text.contains("NaN"), "view:\n{text}");
     assert_eq!(
         table_row(&text, "passthrough"),
-        vec![
-            1,
-            estimated_tokens(chatter.len()),
-            estimated_tokens(chatter.len()),
-            0
-        ],
+        vec![1, 1, 0, 0],
         "view:\n{text}"
     );
 }
@@ -361,29 +410,27 @@ fn the_per_command_table_reports_runs_and_estimated_tokens_per_command() {
     must_contain(&text, "Commands proxied: 2 (trimmed 2, preserved 0)");
     must_contain(
         &text,
-        "Passthrough Commands: 1 (excluded from the Savings Rate)",
+        "Passthrough:      1 (excluded from the Savings Rate)",
     );
-    for header in ["COMMAND", "RUNS", "TOKENS IN", "TOKENS OUT", "SAVED"] {
+    // The Impact column is self-evident from the bars in the rows, so it carries
+    // no header label; the other five are named.
+    for header in ["Command", "Count", "Saved", "Avg%"] {
         must_contain(&text, header);
     }
+    let maven_saved = 2 * (tokens_in - tokens_out);
     assert_eq!(
         table_row(&text, "maven test"),
         vec![
+            1,
             2,
-            2 * tokens_in,
-            2 * tokens_out,
-            2 * (tokens_in - tokens_out)
+            maven_saved,
+            ((maven_saved as f64 / (2 * tokens_in) as f64) * 100.0).round() as i64
         ],
         "view:\n{text}"
     );
     assert_eq!(
         table_row(&text, "passthrough"),
-        vec![
-            1,
-            estimated_tokens(chatter.len()),
-            estimated_tokens(chatter.len()),
-            0
-        ],
+        vec![2, 1, 0, 0],
         "view:\n{text}"
     );
 }
@@ -417,7 +464,11 @@ fn here_counts_only_records_from_that_working_directory() {
         &["gain"],
     ));
     must_contain(&everywhere, "Commands proxied: 2 (trimmed 2, preserved 0)");
-    assert_eq!(table_row(&everywhere, "maven test")[0], 2);
+    assert_eq!(
+        table_row(&everywhere, "maven test")[1],
+        2,
+        "view:\n{everywhere}"
+    );
 
     let here_a = text_of(&toltrim_in(
         project_a.path(),
@@ -426,7 +477,7 @@ fn here_counts_only_records_from_that_working_directory() {
         &["gain", "--here"],
     ));
     must_contain(&here_a, "Commands proxied: 1 (trimmed 1, preserved 0)");
-    assert_eq!(table_row(&here_a, "maven test")[0], 1, "view:\n{here_a}");
+    assert_eq!(table_row(&here_a, "maven test")[1], 1, "view:\n{here_a}");
 
     // The other project sees its own record, not this one's.
     let here_b = text_of(&toltrim_in(
@@ -509,7 +560,7 @@ fn clear_removes_the_records_in_scope_and_the_view_is_then_empty() {
         &["gain", "--here"],
     ));
     must_contain(&here_after, "Commands proxied: 0 (trimmed 0, preserved 0)");
-    must_contain(&here_after, "By command: no Gain Records yet.");
+    must_contain(&here_after, "No Gain Records in scope yet");
 
     let everywhere_after = text_of(&toltrim_in(
         project_a.path(),
@@ -540,7 +591,7 @@ fn clear_removes_the_records_in_scope_and_the_view_is_then_empty() {
     ));
     must_contain(&empty, "Commands proxied: 0 (trimmed 0, preserved 0)");
     must_contain(&empty, "Savings Rate: not yet measurable");
-    must_contain(&empty, "By command: no Gain Records yet.");
+    must_contain(&empty, "No Gain Records in scope yet");
 }
 
 #[test]

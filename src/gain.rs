@@ -170,7 +170,13 @@ pub fn run(args: &[String]) -> i32 {
             return 1;
         }
     };
-    emit(&view(&summary, &rows));
+
+    // Colour is a property of the destination, not of the data: a terminal gets
+    // the Savings figure in green, a pipe gets plain text. The view itself is
+    // built from numbers only.
+    use std::io::IsTerminal as _;
+    let color = std::io::stdout().is_terminal();
+    emit(&view(scope.is_some(), &summary, &rows, color));
     0
 }
 
@@ -181,6 +187,168 @@ fn emit(text: &str) {
     let _ = stdout.write_all(text.as_bytes());
     let _ = stdout.write_all(b"\n");
     let _ = stdout.flush();
+}
+
+/// Green when the view goes to a terminal, the identity map when it does not.
+fn paint(color: bool, text: &str) -> String {
+    if color {
+        format!("\u{1b}[32m{text}\u{1b}[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+/// `76279` reads as `76.3K`; a million and up reads as `M`. One decimal place,
+/// dropped when it is zero, so `80000` is `80K` and not `80.0K`. Pure display:
+/// the Gain Records keep their exact integers.
+fn human(bytes_tokens: i64) -> String {
+    let (value, suffix) = if bytes_tokens >= 1_000_000 {
+        (bytes_tokens as f64 / 1_000_000.0, "M")
+    } else if bytes_tokens >= 1_000 {
+        (bytes_tokens as f64 / 1_000.0, "K")
+    } else {
+        return bytes_tokens.to_string();
+    };
+    let rounded = (value * 10.0).round() / 10.0;
+    let text = if rounded.fract() < f64::EPSILON {
+        format!("{rounded:.0}")
+    } else {
+        format!("{rounded:.1}")
+    };
+    format!("{text}{suffix}")
+}
+
+/// Twenty cells, filled in proportion to the Savings Rate: 82.4% is sixteen
+/// filled cells and four empty ones.
+fn meter(rate_pct: f64) -> String {
+    const CELLS: usize = 20;
+    let filled = ((rate_pct / 100.0 * CELLS as f64).round() as usize).min(CELLS);
+    let mut bar = String::with_capacity(CELLS);
+    for cell in 0..CELLS {
+        bar.push(if cell < filled { '█' } else { '░' });
+    }
+    bar
+}
+
+/// The whole `toltrim gain` view. `here` names the scope in the title; `color`
+/// decides whether the Savings figure is painted.
+fn view(here: bool, summary: &Summary, rows: &[CommandRow], color: bool) -> String {
+    let proxied = summary.trimmed + summary.preserved;
+    let saved = summary.tokens_in - summary.tokens_out;
+    let scope_name = if here { "Here Scope" } else { "Global Scope" };
+
+    // The Savings Rate is a share of the original, over Proxied Commands only;
+    // with nothing to divide by it is zero rather than NaN.
+    let rate = if summary.tokens_in > 0 {
+        (saved as f64 / summary.tokens_in as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    let mut out = String::new();
+    let _ = writeln!(out, "Toltrim Token Savings ({scope_name})");
+    let _ = writeln!(
+        out,
+        "════════════════════════════════════════════════════════════"
+    );
+    let _ = writeln!(
+        out,
+        "{:<18}{} (trimmed {}, preserved {})",
+        "Commands proxied:",
+        human(proxied),
+        summary.trimmed,
+        summary.preserved
+    );
+    let _ = writeln!(
+        out,
+        "{:<18}{} (excluded from the Savings Rate)",
+        "Passthrough:",
+        human(summary.passthrough)
+    );
+    let _ = writeln!(out, "{:<18}{}", "Input tokens:", human(summary.tokens_in));
+    let _ = writeln!(out, "{:<18}{}", "Output tokens:", human(summary.tokens_out));
+    let _ = writeln!(
+        out,
+        "{:<18}{} ({rate:.1}%)",
+        "Tokens saved:",
+        paint(color, &human(saved))
+    );
+    let _ = writeln!(
+        out,
+        "{:<18}{} {rate:.1}%",
+        "Savings meter:",
+        paint(color, &meter(rate))
+    );
+    if proxied == 0 {
+        let _ = writeln!(
+            out,
+            "Savings Rate: not yet measurable (no Proxied Commands recorded)"
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "Savings Rate: {rate:.1}% of the original, over Proxied Commands only"
+        );
+    }
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "Estimated Tokens are an estimate, not billed usage: output bytes / 4, rounded up."
+    );
+    let _ = writeln!(
+        out,
+        "The Savings Rate is the figure to trust; the absolute Estimated Tokens above are approximate."
+    );
+    let _ = writeln!(out);
+
+    if rows.is_empty() {
+        let _ = writeln!(
+            out,
+            "No Gain Records in scope yet; run a Proxied Command first."
+        );
+        return out;
+    }
+
+    let _ = writeln!(out, "By Command");
+    let _ = writeln!(out, "{}", "─".repeat(72));
+    // The header names five columns; the sixth (the Impact bar) is self-evident
+    // from the rows, so it carries no label of its own.
+    let _ = writeln!(
+        out,
+        "{:<4}{:<18}{:>6}{:>9}{:>5}  ",
+        "#", "Command", "Count", "Saved", "Avg%"
+    );
+
+    // Saved, largest first; the Impact bar is a share of the top row's Saved, so
+    // the biggest spender reads as a full bar and the rest scale down.
+    let mut ranked: Vec<&CommandRow> = rows.iter().collect();
+    ranked.sort_by(|a, b| {
+        (b.saved)
+            .partial_cmp(&a.saved)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.label.cmp(&b.label))
+    });
+    let top_saved = ranked.first().map(|row| row.saved).unwrap_or(0.0);
+
+    for (index, row) in ranked.iter().take(10).enumerate() {
+        let index = index + 1; // ranks are one-based
+        let impact = if top_saved > 0.0 {
+            meter(row.saved / top_saved * 100.0)
+        } else {
+            meter(0.0)
+        };
+        let _ = writeln!(
+            out,
+            "{:<4}{:<18}{:>6}{:>9}{:>7.1}%  {}",
+            format!("{index}."),
+            row.label,
+            human(row.count),
+            paint(color, &human(row.saved as i64)),
+            row.avg_pct,
+            impact
+        );
+    }
+    out
 }
 
 /// Run `f` with the panic hook silenced and any panic caught, so an accounting
@@ -298,17 +466,16 @@ struct Summary {
     /// re-derived from the numbers beside it.
     tokens_in: i64,
     tokens_out: i64,
-    /// Passthrough Commands are still shown, separately: they save nothing.
-    passthrough_tokens_in: i64,
 }
 
 /// One row of the per-command table: a command identity and its aggregates.
-struct Row {
-    tool: String,
-    subcommand: Option<String>,
-    runs: i64,
-    tokens_in: i64,
-    tokens_out: i64,
+/// `saved` and `avg_pct` are derived at read time, so the view can rank and
+/// scale without re-querying.
+struct CommandRow {
+    label: String,
+    count: i64,
+    saved: f64,
+    avg_pct: f64,
 }
 
 /// `cwd` filters the view; `None` means every record. The `?1 IS NULL` form
@@ -320,8 +487,7 @@ fn summarize(conn: &Connection, cwd: Option<&str>) -> rusqlite::Result<Summary> 
              COALESCE(SUM(mode = 'preserved'), 0),
              COALESCE(SUM(mode = 'passthrough'), 0),
              COALESCE(SUM(CASE WHEN mode = 'passthrough' THEN 0 ELSE tokens_in END), 0),
-             COALESCE(SUM(CASE WHEN mode = 'passthrough' THEN 0 ELSE tokens_out END), 0),
-             COALESCE(SUM(CASE WHEN mode = 'passthrough' THEN tokens_in ELSE 0 END), 0)
+             COALESCE(SUM(CASE WHEN mode = 'passthrough' THEN 0 ELSE tokens_out END), 0)
          FROM gain_record
          WHERE (?1 IS NULL OR cwd = ?1)",
         params![cwd],
@@ -332,152 +498,49 @@ fn summarize(conn: &Connection, cwd: Option<&str>) -> rusqlite::Result<Summary> 
                 passthrough: row.get(2)?,
                 tokens_in: row.get(3)?,
                 tokens_out: row.get(4)?,
-                passthrough_tokens_in: row.get(5)?,
             })
         },
     )
 }
 
-fn command_rows(conn: &Connection, cwd: Option<&str>) -> rusqlite::Result<Vec<Row>> {
+fn command_rows(conn: &Connection, cwd: Option<&str>) -> rusqlite::Result<Vec<CommandRow>> {
     let mut statement = conn.prepare(
         "SELECT tool, subcommand, COUNT(*),
                 COALESCE(SUM(tokens_in), 0), COALESCE(SUM(tokens_out), 0)
          FROM gain_record
          WHERE (?1 IS NULL OR cwd = ?1)
-         GROUP BY tool, subcommand
-         ORDER BY (COALESCE(SUM(tokens_in), 0) - COALESCE(SUM(tokens_out), 0)) DESC,
-                  COUNT(*) DESC, tool ASC, subcommand ASC",
+         GROUP BY tool, subcommand",
     )?;
     let rows = statement.query_map(params![cwd], |row| {
-        Ok(Row {
-            tool: row.get(0)?,
-            subcommand: row.get(1)?,
-            runs: row.get(2)?,
-            tokens_in: row.get(3)?,
-            tokens_out: row.get(4)?,
+        let tool: String = row.get(0)?;
+        let subcommand: Option<String> = row.get(1)?;
+        let count: i64 = row.get(2)?;
+        let tokens_in: i64 = row.get(3)?;
+        let tokens_out: i64 = row.get(4)?;
+        // A Passthrough Command's bytes are excluded from the Savings Rate, so
+        // its row saves nothing by definition — mirroring `summarize`.
+        let passthrough_row = tool == "passthrough";
+        let saved = if passthrough_row {
+            0.0
+        } else {
+            (tokens_in - tokens_out) as f64
+        };
+        let avg_pct = if passthrough_row || tokens_in == 0 {
+            0.0
+        } else {
+            saved / tokens_in as f64 * 100.0
+        };
+        Ok(CommandRow {
+            label: match subcommand.as_deref().filter(|sub| !sub.is_empty()) {
+                Some(subcommand) => format!("{tool} {subcommand}"),
+                None => tool,
+            },
+            count,
+            saved,
+            avg_pct,
         })
     })?;
     rows.collect()
-}
-
-/// The whole `toltrim gain` view: summary first, then the per-command table.
-/// Pure over its inputs, so the numbers an agent reads can be unit-tested.
-fn view(summary: &Summary, rows: &[Row]) -> String {
-    let proxied = summary.trimmed + summary.preserved;
-    let saved = summary.tokens_in - summary.tokens_out;
-
-    let mut out = String::new();
-    let _ = writeln!(
-        out,
-        "Commands proxied: {proxied} (trimmed {}, preserved {})",
-        summary.trimmed, summary.preserved
-    );
-    let _ = writeln!(
-        out,
-        "Passthrough Commands: {} (excluded from the Savings Rate)",
-        summary.passthrough
-    );
-    let _ = writeln!(out, "Estimated Tokens in: {}", summary.tokens_in);
-    let _ = writeln!(out, "Estimated Tokens out: {}", summary.tokens_out);
-    let _ = writeln!(out, "Estimated Tokens saved: {saved}");
-    let _ = writeln!(
-        out,
-        "{}",
-        savings_rate(proxied, summary.tokens_in, summary.tokens_out)
-    );
-    let _ = writeln!(
-        out,
-        "Passthrough Estimated Tokens in: {} (unchanged, so they save nothing)",
-        summary.passthrough_tokens_in
-    );
-    let _ = writeln!(out);
-    let _ = writeln!(
-        out,
-        "Estimated Tokens are an estimate, not billed usage: output bytes / 4, rounded up."
-    );
-    let _ = writeln!(
-        out,
-        "The Savings Rate is the figure to trust; the absolute Estimated Tokens above are approximate."
-    );
-    let _ = writeln!(out);
-    if rows.is_empty() {
-        let _ = write!(out, "By command: no Gain Records yet.");
-    } else {
-        let _ = writeln!(out, "By command:");
-        let _ = write!(out, "{}", table(rows));
-    }
-    out
-}
-
-/// Estimated Tokens removed as a share of the original, over Proxied Commands
-/// only. With none recorded there is nothing to divide by, so the view says so
-/// instead of printing `NaN` or a division by zero.
-fn savings_rate(proxied: i64, tokens_in: i64, tokens_out: i64) -> String {
-    if proxied == 0 {
-        return "Savings Rate: not yet measurable (no Proxied Commands recorded)".to_string();
-    }
-    if tokens_in <= 0 {
-        return "Savings Rate: not yet measurable (no Estimated Tokens in for any Proxied Command)"
-            .to_string();
-    }
-    let rate = (tokens_in - tokens_out) as f64 / tokens_in as f64 * 100.0;
-    format!("Savings Rate: {rate:.1}% of the original, over Proxied Commands only")
-}
-
-const HEADERS: [&str; 5] = ["COMMAND", "RUNS", "TOKENS IN", "TOKENS OUT", "SAVED"];
-
-/// A plain fixed-width table, so the view needs no formatting crate.
-fn table(rows: &[Row]) -> String {
-    let cells: Vec<[String; 5]> = rows
-        .iter()
-        .map(|row| {
-            [
-                command_label(row),
-                row.runs.to_string(),
-                row.tokens_in.to_string(),
-                row.tokens_out.to_string(),
-                (row.tokens_in - row.tokens_out).to_string(),
-            ]
-        })
-        .collect();
-
-    let mut widths = HEADERS.map(|header| header.len());
-    for row in &cells {
-        for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(cell.len());
-        }
-    }
-
-    let mut lines = Vec::with_capacity(cells.len() + 1);
-    lines.push(format_row(&HEADERS.map(String::from), &widths));
-    for row in &cells {
-        lines.push(format_row(row, &widths));
-    }
-    lines.join("\n")
-}
-
-fn format_row(cells: &[String; 5], widths: &[usize; 5]) -> String {
-    let mut line = String::new();
-    for (index, cell) in cells.iter().enumerate() {
-        if index > 0 {
-            line.push_str("  ");
-        }
-        if index == 0 {
-            let _ = write!(line, "{cell:<width$}", width = widths[index]);
-        } else {
-            let _ = write!(line, "{cell:>width$}", width = widths[index]);
-        }
-    }
-    line
-}
-
-/// How one command is named in the table: `maven test`, `git diff`, or just the
-/// tool when the Invocation named no subcommand (`passthrough`).
-fn command_label(row: &Row) -> String {
-    match row.subcommand.as_deref().filter(|sub| !sub.is_empty()) {
-        Some(subcommand) => format!("{} {subcommand}", row.tool),
-        None => row.tool.clone(),
-    }
 }
 
 #[cfg(test)]
@@ -490,7 +553,6 @@ mod tests {
         passthrough: i64,
         tokens_in: i64,
         tokens_out: i64,
-        passthrough_tokens_in: i64,
     ) -> Summary {
         Summary {
             trimmed,
@@ -498,23 +560,15 @@ mod tests {
             passthrough,
             tokens_in,
             tokens_out,
-            passthrough_tokens_in,
         }
     }
 
-    fn row(
-        tool: &str,
-        subcommand: Option<&str>,
-        runs: i64,
-        tokens_in: i64,
-        tokens_out: i64,
-    ) -> Row {
-        Row {
-            tool: tool.to_string(),
-            subcommand: subcommand.map(str::to_string),
-            runs,
-            tokens_in,
-            tokens_out,
+    fn command_row(label: &str, count: i64, saved: f64, avg_pct: f64) -> CommandRow {
+        CommandRow {
+            label: label.to_string(),
+            count,
+            saved,
+            avg_pct,
         }
     }
 
@@ -554,6 +608,7 @@ mod tests {
             Some(PathBuf::from("/data/toltrim/history.db"))
         );
         assert_eq!(unix_db_path(None, None), None);
+        // An empty XDG_DATA_HOME is the same as unset.
         assert_eq!(
             unix_db_path(Some(OsString::new()), Some(OsString::from("/home/dev"))),
             Some(PathBuf::from("/home/dev/.local/share/toltrim/history.db"))
@@ -561,50 +616,37 @@ mod tests {
     }
 
     #[test]
-    fn the_savings_rate_is_one_decimal_and_counts_proxied_commands_only() {
+    fn the_view_keeps_the_rate_over_proxied_commands_only() {
         // 1000 in, 127 out: 873 removed, 87.3%. The passthrough command's
-        // tokens are shown but never enter the rate.
-        let view = view(&summary(1, 0, 1, 1000, 127, 400), &[]);
+        // tokens never enter the rate.
+        let view = view(false, &summary(1, 0, 1, 1000, 127), &[], false);
         assert!(
             view.contains("Savings Rate: 87.3% of the original, over Proxied Commands only"),
             "got:\n{view}"
         );
-        assert!(view.contains("Estimated Tokens in: 1000"), "got:\n{view}");
-        assert!(view.contains("Passthrough Commands: 1 (excluded from the Savings Rate)"));
-        assert!(view.contains("Passthrough Estimated Tokens in: 400"));
+        // The ADR-0007 disclaimer survives the restyle, and no billed figure is
+        // published (the disclaimer's own colon is the only "billed usage:" in view).
+        assert!(view.contains("not billed usage"), "got:\n{view}");
     }
 
     #[test]
-    fn a_preserved_invocation_counts_as_a_proxied_command() {
-        let view = view(&summary(0, 2, 0, 200, 100, 0), &[]);
-        assert!(
-            view.contains("Commands proxied: 2 (trimmed 0, preserved 2)"),
-            "got:\n{view}"
-        );
-        assert!(view.contains("Savings Rate: 50.0%"), "got:\n{view}");
-    }
-
-    #[test]
-    fn an_empty_view_says_the_rate_is_not_yet_measurable() {
-        let view = view(&summary(0, 0, 0, 0, 0, 0), &[]);
-        assert!(
-            view.contains("Commands proxied: 0 (trimmed 0, preserved 0)"),
-            "got:\n{view}"
-        );
+    fn an_empty_view_reports_not_yet_measurable_and_an_empty_meter() {
+        let view = view(false, &summary(0, 0, 1, 0, 0), &[], false);
         assert!(
             view.contains("Savings Rate: not yet measurable (no Proxied Commands recorded)"),
             "got:\n{view}"
         );
         assert!(!view.contains("NaN"), "got:\n{view}");
+        assert!(view.contains("░░░░░░░░░░░░░░░░░░░░ 0.0%"), "got:\n{view}");
         assert!(
-            view.contains("By command: no Gain Records yet."),
+            view.contains("No Gain Records in scope yet; run a Proxied Command first."),
             "got:\n{view}"
         );
     }
 
     #[test]
     fn every_estimate_is_labelled_as_an_estimate_and_states_the_method() {
-        let view = view(&summary(1, 0, 0, 100, 50, 0), &[]);
+        let view = view(false, &summary(1, 0, 0, 100, 50), &[], false);
         assert!(view.contains("not billed usage"), "got:\n{view}");
         assert!(
             view.contains("output bytes / 4, rounded up"),
@@ -614,23 +656,61 @@ mod tests {
             view.contains("The Savings Rate is the figure to trust"),
             "got:\n{view}"
         );
+    }
+
+    #[test]
+    fn the_by_command_table_ranks_by_saved_and_scales_the_impact_bar() {
+        let rows = vec![
+            command_row("maven test", 2, 873.0, 87.3),
+            command_row("git log", 1, 1577.0, 74.0),
+            command_row("listing", 2, 9.0, 2.7),
+        ];
+        let view = view(false, &summary(5, 0, 0, 10000, 8000), &rows, false);
+        // Saved, largest first: git log (1577) before maven test (873).
+        let git = view.find("git log").expect("git log row");
+        let maven = view.find("maven test").expect("maven test row");
+        assert!(git < maven, "got:\n{view}");
+        // The top row's Impact bar is full; the smallest is a sliver.
+        assert!(view.contains("██████████"), "got:\n{view}");
+        // 9 against a top of 1577 is less than half a cell, so it rounds to empty.
+        let listing_line = view.lines().find(|line| line.contains("listing")).unwrap();
         assert!(
-            !view.to_lowercase().contains("billed usage: 50"),
-            "got:\n{view}"
+            listing_line.contains("░░░░░░░░░░░░░░░░░░░░"),
+            "got: {listing_line}"
+        );
+        // K/M abbreviations in the Saved column.
+        assert!(view.contains("1.6K"), "got:\n{view}");
+    }
+
+    #[test]
+    fn the_view_is_plain_text_without_a_terminal_and_green_with_one() {
+        let rows = vec![command_row("maven test", 2, 873.0, 87.3)];
+        let plain = view(false, &summary(2, 2, 0, 1000, 127), &rows, false);
+        assert!(
+            !plain.contains("\u{1b}"),
+            "plain view must carry no escapes:\n{plain}"
+        );
+        let colored = view(false, &summary(2, 2, 0, 1000, 127), &rows, true);
+        assert!(
+            colored.contains("\u{1b}[32m"),
+            "colored view must paint green:\n{colored}"
         );
     }
 
     #[test]
-    fn the_table_reports_runs_tokens_and_savings_per_command() {
-        let rows = vec![
-            row("maven", Some("test"), 2, 1000, 127),
-            row("passthrough", None, 1, 400, 400),
-        ];
-        let rendered = table(&rows);
-        let lines: Vec<&str> = rendered.lines().collect();
-        assert_eq!(lines[0], "COMMAND      RUNS  TOKENS IN  TOKENS OUT  SAVED");
-        assert_eq!(lines[1], "maven test      2       1000         127    873");
-        assert_eq!(lines[2], "passthrough     1        400         400      0");
-        assert_eq!(lines.len(), 3);
+    fn human_abbreviates_thousands_and_millions() {
+        assert_eq!(human(999), "999");
+        assert_eq!(human(1000), "1K");
+        assert_eq!(human(76279), "76.3K");
+        assert_eq!(human(80000), "80K");
+        assert_eq!(human(1_500_000), "1.5M");
+    }
+
+    #[test]
+    fn the_meter_fills_in_proportion_to_the_rate() {
+        assert_eq!(meter(0.0), "░".repeat(20));
+        assert_eq!(meter(100.0), "█".repeat(20));
+        let half = meter(50.0);
+        assert_eq!(half, format!("{}{}", "█".repeat(10), "░".repeat(10)));
     }
 }

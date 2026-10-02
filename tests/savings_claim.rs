@@ -622,9 +622,8 @@ fn replay(invocation: &Invocation, label: &str) -> (Output, String) {
     (replayed, view)
 }
 
-/// The one number a named label reports, e.g. `Estimated Tokens in: 42`. Some
-/// labels carry a trailing explanation (`… 513 (unchanged, so they save
-/// nothing)`), so only the first token after the label is read.
+/// The one number a named label reports, e.g. `Input tokens: 42`. Values may be
+/// K/M abbreviated (`1.6K`), so the abbreviation is expanded before parsing.
 #[cfg(unix)]
 fn reported(view: &str, label: &str) -> i64 {
     let prefix = format!("{label}: ");
@@ -632,12 +631,26 @@ fn reported(view: &str, label: &str) -> i64 {
         .lines()
         .find_map(|line| line.strip_prefix(&prefix))
         .unwrap_or_else(|| panic!("the gain view has no {label:?} line:\n{view}"));
-    value
+    let cell = value
         .split_whitespace()
         .next()
         .unwrap_or_else(|| panic!("{label} has no value in:\n{view}"))
-        .parse()
-        .unwrap_or_else(|e| panic!("cannot parse {label} from {value:?} in:\n{view}\n{e}"))
+        .to_string();
+    parse_cell(&cell, label, view)
+}
+
+/// Expand the view's K/M abbreviation: `1.6K` -> 1600, `2M` -> 2_000_000.
+#[cfg(unix)]
+fn parse_cell(cell: &str, label: &str, view: &str) -> i64 {
+    let (number, multiplier) = match cell.chars().last() {
+        Some('K') => (&cell[..cell.len() - 1], 1_000),
+        Some('M') => (&cell[..cell.len() - 1], 1_000_000),
+        _ => (cell, 1),
+    };
+    number
+        .parse::<f64>()
+        .map(|value| (value * multiplier as f64).round() as i64)
+        .unwrap_or_else(|e| panic!("cannot parse {label} from {cell:?} in:\n{view}\n{e}"))
 }
 
 #[cfg(unix)]
@@ -658,17 +671,17 @@ fn a_trimmed_invocation_is_recorded_with_the_seams_byte_counts() {
     );
 
     assert_eq!(
-        reported(&view, "Estimated Tokens in"),
+        reported(&view, "Input tokens"),
         expected_in,
         "the Gain Record disagrees with the fixture's byte count:\n{view}"
     );
     assert_eq!(
-        reported(&view, "Estimated Tokens out"),
+        reported(&view, "Output tokens"),
         expected_out,
         "the Gain Record disagrees with the seam's output size:\n{view}"
     );
     assert_eq!(
-        reported(&view, "Estimated Tokens saved"),
+        reported(&view, "Tokens saved"),
         expected_in - expected_out,
         "the recorded saving is not in - out:\n{view}"
     );
@@ -705,16 +718,8 @@ fn a_machine_readable_request_is_recorded_as_preserved() {
         fixture_bytes(invocation.fixture),
         "a Machine-Readable Request must arrive byte-identical"
     );
-    assert_eq!(
-        reported(&view, "Estimated Tokens in"),
-        expected_in,
-        "{view}"
-    );
-    assert_eq!(
-        reported(&view, "Estimated Tokens out"),
-        expected_out,
-        "{view}"
-    );
+    assert_eq!(reported(&view, "Input tokens"), expected_in, "{view}");
+    assert_eq!(reported(&view, "Output tokens"), expected_out, "{view}");
     assert!(
         view.contains("Commands proxied: 1 (trimmed 0, preserved 1)"),
         "`--porcelain` must count as preserved, not trimmed:\n{view}"
@@ -738,7 +743,6 @@ fn a_command_with_no_rule_is_a_passthrough_command_outside_the_rate() {
         preserve: false,
         note: "a stand-in for a command toltrim has no rule for",
     };
-    let expected_in = tokens(fixture_bytes(passthrough.fixture).len());
 
     let (replayed, view) = replay(&passthrough, "passthrough");
     assert_eq!(
@@ -746,13 +750,11 @@ fn a_command_with_no_rule_is_a_passthrough_command_outside_the_rate() {
         fixture_bytes(passthrough.fixture),
         "a Passthrough Command must be byte-identical to running it alone"
     );
-    assert_eq!(
-        reported(&view, "Passthrough Estimated Tokens in"),
-        expected_in,
-        "the Passthrough Command's byte count was not recorded:\n{view}"
-    );
+    // The Passthrough Command's bytes are recorded in the database and counted
+    // on its own line; they never enter the rate, so the view publishes no
+    // Proxied Estimated Tokens for them.
     assert!(
-        view.contains("Passthrough Commands: 1 (excluded from the Savings Rate)"),
+        view.contains("Passthrough:      1 (excluded from the Savings Rate)"),
         "a command with no rule must be recorded as a Passthrough Command:\n{view}"
     );
     assert!(
