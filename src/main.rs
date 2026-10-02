@@ -106,7 +106,7 @@ fn usage() {
 USAGE:
     toltrim <command> [args...]
     toltrim init [--dry-run]
-    toltrim gain [--here] [--clear]
+    toltrim gain [--here|--all] [--clear]
 
 Proxied commands (output is trimmed):
     mvn test|verify|package|compile|install|clean|test-compile|integration-test
