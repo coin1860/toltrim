@@ -1,10 +1,12 @@
-//! toltrim entry point: decide whether this Invocation may be trimmed, run the
-//! command, emit the result, and forward the exit code untouched.
+//! toltrim entry point. It keeps only what needs a process — parsing arguments,
+//! starting the command, writing the streams, forwarding the exit code — and
+//! reaches every trimming rule through `trim::render`.
 
 use std::ffi::OsString;
 use std::io::{IsTerminal, Write};
 
-use toltrim::trim::{self, Tool};
+use toltrim::gain::Record;
+use toltrim::trim;
 
 fn main() {
     let mut raw = false;
@@ -32,23 +34,27 @@ fn main() {
             println!("toltrim {}", env!("CARGO_PKG_VERSION"));
             std::process::exit(0);
         }
+        // toltrim's own verbs, which proxy nothing.
+        "init" => std::process::exit(toltrim::init::run(&strings(&argv[1..]))),
+        "gain" => std::process::exit(toltrim::gain::run(&strings(&argv[1..]))),
         _ => {}
     }
 
     let program = argv[0].clone();
     let rest = &argv[1..];
+    let flags = strings(rest);
     let tool = trim::detect(&first);
-    let flags: Vec<String> = rest
-        .iter()
-        .map(|a| a.to_string_lossy().into_owned())
-        .collect();
 
-    let preserve = raw
-        || trim::requests_machine_readable(tool, &flags)
-        || trim::is_human_pipe(
-            std::io::stdout().is_terminal(),
-            std::io::stdin().is_terminal(),
-        );
+    // The preservation decision is made here, where the streams are, but it is a
+    // pure function: `--raw`, a Machine-Readable Request, and the human-pipe case
+    // are all testable without a process.
+    let preserve = trim::should_preserve(
+        raw,
+        tool,
+        &flags,
+        std::io::stdout().is_terminal(),
+        std::io::stdin().is_terminal(),
+    );
 
     let outcome = toltrim::exec::run(&program, rest);
     if let Some(error) = outcome.spawn_error {
@@ -56,21 +62,21 @@ fn main() {
         std::process::exit(127);
     }
 
-    let rendered = if preserve {
-        match String::from_utf8(outcome.stdout) {
-            Ok(text) => toltrim::ansi::strip(&text).into_bytes(),
-            Err(e) => e.into_bytes(),
-        }
-    } else if tool == Tool::Maven {
-        match String::from_utf8(outcome.stdout) {
-            Ok(text) => trim::maven::trim(&text, outcome.code).into_bytes(),
-            Err(e) => e.into_bytes(),
-        }
-    } else {
-        // Anything we do not know how to trim is passed through byte for byte:
-        // an unproxied command must behave exactly as it would alone.
-        outcome.stdout
-    };
+    let rendered = trim::render(tool, &flags, &outcome.stdout, outcome.code, preserve);
+
+    // Accounting is best effort and always after the result is known; it may
+    // never alter what the command emitted or how it exited.
+    let subcommand = trim::subcommand(tool, &flags);
+    let cwd = std::env::current_dir().unwrap_or_default();
+    toltrim::gain::record(&Record {
+        tool: tool.as_str(),
+        subcommand: subcommand.as_deref(),
+        mode: trim::classify(tool, &flags, preserve).as_str(),
+        exit_code: outcome.code,
+        bytes_in: outcome.stdout.len(),
+        bytes_out: rendered.len(),
+        cwd: &cwd.to_string_lossy(),
+    });
 
     let mut stdout = std::io::stdout().lock();
     let _ = stdout.write_all(&rendered);
@@ -87,15 +93,25 @@ fn main() {
     std::process::exit(outcome.code);
 }
 
+fn strings(args: &[OsString]) -> Vec<String> {
+    args.iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect()
+}
+
 fn usage() {
     eprintln!(
         "toltrim {version} — trim command output for coding agents
 
 USAGE:
     toltrim <command> [args...]
+    toltrim init [--dry-run]
+    toltrim gain [--here] [--clear]
 
 Proxied commands (output is trimmed):
-    mvn test|verify|package|compile|install|clean|test-compile
+    mvn test|verify|package|compile|install|clean|test-compile|integration-test
+    git status|diff|log|show|branch
+    ls, dir, tree
 
 Everything else is executed unchanged, byte for byte.
 

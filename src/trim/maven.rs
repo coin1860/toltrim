@@ -38,7 +38,7 @@ const FLOOR_PERCENT: usize = 2;
 const FLOOR_MAX_LINES: usize = 400;
 
 /// Trim one Maven run. `exit_code` is the child's, verbatim.
-pub fn trim(raw: &str, exit_code: i32) -> String {
+pub fn render(raw: &str, exit_code: i32) -> String {
     let text = ansi::strip(raw);
     let lines: Vec<&str> = text.lines().map(|l| l.trim_end_matches('\r')).collect();
     let succeeded = exit_code == 0 && lines.iter().any(|l| l.contains("BUILD SUCCESS"));
@@ -260,14 +260,14 @@ mod tests {
         // No line carries a marker, so nothing would survive trimming: the Floor
         // has to answer with the original text rather than with silence.
         let raw = "compiling\nsomething went wrong\n";
-        let out = trim(raw, 1);
+        let out = render(raw, 1);
         assert!(out.contains("something went wrong"));
     }
 
     #[test]
     fn success_without_test_totals_never_claims_tests_passed() {
         let raw = "[INFO] Building demo 1\n[INFO] BUILD SUCCESS\n[INFO] Total time:  1.0 s\n";
-        let out = trim(raw, 0);
+        let out = render(raw, 0);
         assert!(out.contains("BUILD SUCCESS"));
         assert!(!out.contains("Tests run"));
     }
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn maven_advice_is_dropped() {
         let raw = "[ERROR] Bad thing happened\n[ERROR] -> [Help 1]\n[ERROR] Re-run Maven using the -X switch to enable full debug logging\n";
-        let out = trim(raw, 1);
+        let out = render(raw, 1);
         assert!(out.contains("Bad thing happened"));
         assert!(!out.contains("Help 1"));
         assert!(!out.contains("-X switch"));

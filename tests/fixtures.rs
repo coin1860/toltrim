@@ -2,18 +2,29 @@
 //! Maven runs: every line an agent needs must survive trimming, and the noise
 //! must not. A test that only asserted "the output got smaller" would pass while
 //! the tool quietly deleted the reason a build failed.
+//!
+//! Everything here goes through the pure render seam, so no process is started.
 
 use std::fs;
+
+use toltrim::trim::{self, Tool};
 
 fn fixture(name: &str) -> String {
     let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"))
 }
 
+/// Read the fixture bytes through `render`, exactly as the entry point does.
+fn render(tool: Tool, args: &[&str], raw: &str, code: i32, preserve: bool) -> String {
+    let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let bytes = trim::render(tool, &args, raw.as_bytes(), code, preserve);
+    String::from_utf8(bytes).expect("fixtures are valid UTF-8")
+}
+
 #[test]
 fn a_real_surefire_failure_keeps_the_assertion_that_explains_it() {
     let raw = fixture("mvn-test-fail-surefire.txt");
-    let out = toltrim::trim::maven::trim(&raw, 1);
+    let out = render(Tool::Maven, &[], &raw, 1, false);
 
     // Must survive. The assertion line carries no `[ERROR]` prefix, so a rule
     // that kept only marked lines would drop it and leave the agent guessing.
@@ -53,7 +64,7 @@ fn a_real_surefire_failure_keeps_the_assertion_that_explains_it() {
 #[test]
 fn a_successful_run_becomes_one_line_per_module() {
     let raw = fixture("mvn-test-pass.txt");
-    let out = toltrim::trim::maven::trim(&raw, 0);
+    let out = render(Tool::Maven, &[], &raw, 0, false);
 
     assert!(out.contains("demo: BUILD SUCCESS"), "got:\n{out}");
     assert!(out.contains("Tests run: 2, Failures: 0, Errors: 0, Skipped: 0"));
@@ -66,9 +77,26 @@ fn a_successful_run_becomes_one_line_per_module() {
 #[test]
 fn a_dependency_failure_keeps_the_cause() {
     let raw = fixture("mvn-dependency-resolution-failure.txt");
-    let out = toltrim::trim::maven::trim(&raw, 1);
+    let out = render(Tool::Maven, &[], &raw, 1, false);
 
     assert!(out.contains("Could not resolve dependencies"), "got:\n{out}");
     assert!(out.contains("Cannot access central"));
     assert!(!out.contains("Help 1"));
+}
+
+#[test]
+fn an_unproxied_command_passes_through_the_seam_unchanged() {
+    let raw = fixture("mvn-test-pass.txt");
+    let out = render(Tool::Unknown, &[], &raw, 0, false);
+    assert_eq!(out, raw, "an unknown command must be byte-identical");
+}
+
+#[test]
+fn a_machine_readable_maven_run_is_preserved() {
+    let raw = fixture("mvn-test-pass.txt");
+    let args = vec!["-q".to_string(), "test".to_string()];
+    // The preservation decision is itself a pure function of the seam's inputs.
+    let preserve = trim::should_preserve(false, Tool::Maven, &args, false, false);
+    let out = render(Tool::Maven, &["-q", "test"], &raw, 0, preserve);
+    assert_eq!(out, raw, "a quiet run is a Machine-Readable Request");
 }
