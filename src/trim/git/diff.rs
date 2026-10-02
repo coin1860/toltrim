@@ -14,9 +14,10 @@
 const NO_NEWLINE: &str = "\\ No newline at end of file";
 
 /// `text` has already had ANSI removed and is valid UTF-8. `exit_code` is the
-/// child's verbatim and is deliberately not consulted: `git diff` can exit 1
-/// when there are differences while `git show` exits 0, and reinterpreting
-/// either would turn "there are changes" into "the command failed" (ADR-0003).
+/// child's verbatim and is deliberately not consulted: plain `git diff` exits 0
+/// whether or not there are differences (`--exit-code` is what exits 1) while
+/// `git show` exits 0, and reinterpreting either would turn "there are changes"
+/// into "the command failed" or the reverse (ADR-0003).
 pub fn render(text: &str, _exit_code: i32) -> String {
     let ends_with_newline = text.ends_with('\n');
     let mut out = String::with_capacity(text.len());
@@ -123,10 +124,17 @@ fn is_change(raw: &str) -> bool {
 /// Per-file metadata that names a hash, a mode, or a similarity percentage:
 /// never the change itself. Only ever dropped in a file's header, before its
 /// hunks, so a commit message in `git show` cannot be mistaken for it.
+///
+/// `new file mode` and `deleted file mode` are here for the same reason as
+/// `old mode`/`new mode`: they describe the file, not the diff, and they appear
+/// in the header of every added or deleted file. The added file is still
+/// announced by its `diff --git` line and its `---`/`+++` pair.
 fn is_file_metadata(line: &str) -> bool {
     line.starts_with("index ")
         || line.starts_with("old mode ")
         || line.starts_with("new mode ")
+        || line.starts_with("new file mode ")
+        || line.starts_with("deleted file mode ")
         || line.starts_with("similarity index ")
         || line.starts_with("dissimilarity index ")
         || line.starts_with("rename from ")
@@ -229,6 +237,49 @@ mod tests {
         // looks like context may still be a change.
         let text = "diff --cc x\n@@@ -1,3 -1,3 +1,4 @@@\n  both\n++added in both\n +added in one\n";
         assert_eq!(render(text, 0), text);
+    }
+
+    #[test]
+    fn an_added_or_deleted_file_keeps_its_hunk_and_loses_its_mode_announcement() {
+        let added = concat!(
+            "diff --git a/added.txt b/added.txt\n",
+            "new file mode 100644\n",
+            "index 0000000..1111111\n",
+            "--- /dev/null\n",
+            "+++ b/added.txt\n",
+            "@@ -0,0 +1 @@\n",
+            "+brand new\n",
+        );
+        assert_eq!(
+            render(added, 0),
+            concat!(
+                "diff --git a/added.txt b/added.txt\n",
+                "--- /dev/null\n",
+                "+++ b/added.txt\n",
+                "@@ -0,0 +1 @@\n",
+                "+brand new\n",
+            )
+        );
+
+        let deleted = concat!(
+            "diff --git a/gone.txt b/gone.txt\n",
+            "deleted file mode 100644\n",
+            "index 1111111..0000000\n",
+            "--- a/gone.txt\n",
+            "+++ /dev/null\n",
+            "@@ -1 +0,0 @@\n",
+            "-gone\n",
+        );
+        assert_eq!(
+            render(deleted, 0),
+            concat!(
+                "diff --git a/gone.txt b/gone.txt\n",
+                "--- a/gone.txt\n",
+                "+++ /dev/null\n",
+                "@@ -1 +0,0 @@\n",
+                "-gone\n",
+            )
+        );
     }
 
     #[test]

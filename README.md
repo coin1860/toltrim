@@ -154,6 +154,11 @@ Those change repository state, so they are never interpreted: toltrim runs them
 and returns their streams and their exit code verbatim, whatever rules exist for
 the rest of git.
 
+A Maven phase outside the lifecycle is a Passthrough Command too: `toltrim mvn
+deploy`, `toltrim mvn validate`, and a plugin goal such as `toltrim mvn
+dependency:tree` behave exactly like the command alone. ADR-0008 enumerates the
+lifecycle, and nothing else is interpreted.
+
 ### What "Proxied" means in practice
 
 - Maven: a successful build becomes one Success Summary line per module, with
@@ -168,11 +173,16 @@ the rest of git.
 - `git diff` and `git show`: one line of context instead of three, with index
   hashes, mode lines, and rename percentages dropped — every changed file and
   every hunk is kept.
-- `git log`: hash, author, date, and subject.
+- `git log`: hash, author, date, and subject, capped at the twenty most recent
+  commits without a line of toltrim's own announcing the cap.
 - `git branch`: names only, current branch marked.
-- `ls`, `dir`, `tree`: Noise directories (`.git`, `target`, `node_modules`,
-  `build`, `.idea`) collapse to a count, entries group by kind, and over-long
-  lines are truncated with a visible marker.
+- `ls`, `dir`, `tree`: a Noise directory (`.git`, `target`, `node_modules`,
+  `build`, `.idea`) collapses to one counted line where its contents or columns
+  would otherwise be printed — in a `tree` and in a row listing. A flat `ls`
+  already gives each directory one line, so it keeps the name rather than paying
+  for a marker that elides nothing. Entries group by kind, over-long lines are
+  truncated with a visible marker, and no listing is ever made longer than the
+  one it read.
 
 ## Every other command
 
@@ -247,9 +257,9 @@ Here is the real view over the demo's fixture replay (see
 Commands proxied: 22 (trimmed 20, preserved 2)
 Passthrough Commands: 0 (excluded from the Savings Rate)
 Estimated Tokens in: 30008
-Estimated Tokens out: 3203
-Estimated Tokens saved: 26805
-Savings Rate: 89.3% of the original, over Proxied Commands only
+Estimated Tokens out: 3139
+Estimated Tokens saved: 26869
+Savings Rate: 89.5% of the original, over Proxied Commands only
 Passthrough Estimated Tokens in: 0 (unchanged, so they save nothing)
 
 Estimated Tokens are an estimate, not billed usage: output bytes / 4, rounded up.
@@ -260,7 +270,7 @@ COMMAND        RUNS  TOKENS IN  TOKENS OUT  SAVED
 maven test        5      25544        1418  24126
 maven compile     1       1554         329   1225
 git status        2       1124          57   1067
-listing           9       1120        1005    115
+listing           9       1120         941    179
 git diff          1        209         127     82
 git show          1        264         182     82
 git log           1        142          65     77
@@ -270,7 +280,7 @@ git branch        2         51          20     31
 The summary separates Proxied Commands from Passthrough Commands, and the
 Savings Rate counts Proxied Commands only, so an unknown command can neither
 flatter nor dilute it. Each Gain Record also carries the rule version
-(`RULES_VERSION`, currently 2) that produced it, so savings measured under
+(`RULES_VERSION`, currently 3) that produced it, so savings measured under
 different rules are never silently compared.
 
 ---
@@ -297,10 +307,10 @@ when a repository or a warm Maven cache is not reachable. Replaying them through
 the pure render seam gives the demo's headline figure:
 
 ```
-Savings Rate: 89.3% (recorded fixtures, 22 Invocations)
+Savings Rate: 89.5% (recorded fixtures, 22 Invocations)
 ```
 
-That is 30008 Estimated Tokens in and 3203 out — 26805 removed over 22 Proxied
+That is 30008 Estimated Tokens in and 3139 out — 26869 removed over 22 Proxied
 Commands, 20 trimmed and 2 preserved (`mvn -o -q -Dstyle.color=always test` and
 `git status --porcelain`, both Machine-Readable Requests that must arrive intact
 and therefore save nothing).

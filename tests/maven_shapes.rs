@@ -80,25 +80,23 @@ fn assert_reactor_summary(out: &str) {
         "beta claimed tests it never ran:\n{out}"
     );
 
-    // The summary is one line per module in reactor order; that order is the
-    // contract the ticket names, not an internal detail of a window.
-    let order = [
+    // One Success Summary line per module, and each module named once. The order
+    // they appear in is Maven's reactor order and is deliberately not asserted:
+    // spec.md:309 rules out tests that pin internal ordering, and pinning it
+    // would fail on a rule change that keeps every module and every total.
+    let modules = [
         "reactor: BUILD SUCCESS",
         "alpha: BUILD SUCCESS",
         "beta: BUILD SUCCESS",
         "gamma: BUILD SUCCESS",
     ];
-    let positions: Vec<usize> = order
-        .iter()
-        .map(|label| {
-            out.find(label)
-                .unwrap_or_else(|| panic!("{label:?} missing from:\n{out}"))
-        })
-        .collect();
-    assert!(
-        positions.windows(2).all(|pair| pair[0] < pair[1]),
-        "modules are not in reactor order:\n{out}"
-    );
+    for label in modules {
+        assert_eq!(
+            out.matches(label).count(),
+            1,
+            "{label:?} must have exactly one Success Summary line in:\n{out}"
+        );
+    }
 }
 
 fn assert_reactor_noise_is_gone(out: &str) {
@@ -119,7 +117,7 @@ fn assert_reactor_noise_is_gone(out: &str) {
 #[test]
 fn a_reactor_run_gives_one_summary_per_module_with_that_modules_own_counts() {
     let raw = fixture("mvn-reactor-test-pass.txt");
-    let out = render(&[], &raw, 0, false);
+    let out = render(&["-o", "test"], &raw, 0, false);
     assert_reactor_summary(&out);
     assert_reactor_noise_is_gone(&out);
 }
@@ -127,7 +125,7 @@ fn a_reactor_run_gives_one_summary_per_module_with_that_modules_own_counts() {
 #[test]
 fn a_compile_error_keeps_every_file_and_line_and_the_detail_that_explains_it() {
     let raw = fixture("mvn-compile-error.txt");
-    let out = render(&[], &raw, 1, false);
+    let out = render(&["compile"], &raw, 1, false);
 
     // Every compilation error keeps its file and line: that pair is what lets an
     // agent open the right file, so no window may reach past it.
@@ -251,8 +249,8 @@ fn a_crlf_run_summarises_identically_to_its_lf_twin() {
         "CRLF fixture is not a pure line-ending conversion"
     );
 
-    let out_lf = render(&[], &lf, 0, false);
-    let out_crlf = render(&[], &crlf, 0, false);
+    let out_lf = render(&["-o", "test"], &lf, 0, false);
+    let out_crlf = render(&["-o", "test"], &crlf, 0, false);
 
     // The same run, so the same Success Summary.
     assert_eq!(out_crlf, out_lf, "CRLF changed the Success Summary");

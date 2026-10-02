@@ -26,7 +26,8 @@ pub fn subcommand(args: &[String]) -> Option<String> {
 }
 
 /// Apply the rule set for this subcommand. `exit_code` is the child's, verbatim:
-/// `git diff` exits 1 when there are differences, and no rule may reinterpret it.
+/// plain `git diff` exits 0 whether or not there are differences — `--exit-code`
+/// is what exits 1 — and no rule may reinterpret it either way (ADR-0003).
 pub fn render(text: &str, exit_code: i32, args: &[String]) -> String {
     match subcommand(args).as_deref() {
         Some("diff" | "show") => diff::render(text, exit_code),

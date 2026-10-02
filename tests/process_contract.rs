@@ -458,9 +458,11 @@ fn a_proxied_command_forwards_stderr_verbatim_while_stdout_is_trimmed() {
     );
 
     let direct = run_stand_in(&mvn, "the maven stand-in alone");
+    // `mvn test` names a phase in the ADR-0008 lifecycle, so the run is a
+    // Proxied Command; a bare `mvn` would be a Passthrough Command.
     let proxied = run_toltrim(
         &dir,
-        &[mvn.as_os_str()],
+        &[mvn.as_os_str(), OsStr::new("test")],
         "the maven stand-in through toltrim",
     );
 

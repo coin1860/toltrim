@@ -20,3 +20,22 @@ executable.
       survives, the per-file listing inside the noise directory does not.
 - [ ] A trailing slash, hidden entries, and a `-la`-style long listing are handled without
       changing the meaning of the listing.
+
+## Comments
+
+**Refinement to the collapse criterion (found while smoke-testing the packaged binary).** A
+plain `ls` already prints a Noise directory as one line, so the second checkbox's marker
+collapsed nothing and cost twenty-one bytes: measured `53 -> 119` bytes for a project root
+with `build`, `node_modules` and `target`. The rule was therefore made shape-aware — a
+Noise directory collapses where its contents or columns would otherwise be printed, which
+is a `tree` (a subtree) and a row listing (`ls -l`, `ls -la`, `dir`, whose size and date
+columns are dropped). A flat name listing (`ls`, `ls -1`, `ls -m`) keeps the name. A byte
+floor backs the whole rule set: if the listing would end up longer than the one it read,
+the original is emitted, so no listing shape can grow its input.
+
+The criterion's substance is unaffected: the collapse is still visible rather than silent,
+still counted in a `tree`, and `long lines are truncated at a fixed width` now applies to
+the flat fixtures too (previously the markers outweighed the truncation and the whole
+listing was reverted). The recorded `ls`, `ls -1` and `ls -m` fixtures therefore shrink by
+less, which is why the published Savings Rate moved from 89.3% to 89.5% — `listing` now
+records 179 Estimated Tokens saved over 9 Invocations rather than 115.

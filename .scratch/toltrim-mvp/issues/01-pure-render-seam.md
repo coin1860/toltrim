@@ -17,3 +17,19 @@ the streams, forwarding the exit code. No behaviour changes.
 - [ ] The entry point contains no tool-specific branch and no rule of its own; adding a
       Tool means adding a rule set, not editing the entry point.
 - [ ] Output that is not valid UTF-8 still reaches the caller unchanged.
+
+## Comments
+
+**The seam must consult `is_proxied`, not only `preserve` (found while smoke-testing the
+packaged binary).** The first cut gave `render` two ways to skip the rules: the tool is
+`Unknown`, or the Invocation is preserved. It never asked whether a rule exists for this
+Invocation, so a tool with a rule set had its rules applied to every subcommand of that
+tool — `toltrim mvn deploy` and `toltrim mvn dependency:tree` came back as a Maven Success
+Summary or Failure Extract although ADR-0008 excludes them. The Gain Record disagreed with
+the bytes: `classify` (which does consult `is_proxied`) recorded `passthrough` while the
+output a caller received had been rewritten.
+
+`render` now returns the bytes unchanged when `!is_proxied(tool, args)`, ANSI included,
+because a Passthrough Command has no rule set to preserve it from. That also settles the
+`git add`/`commit`/`checkout` family: their output is byte-identical however the caller
+invoked toltrim, which is what the README already promised.

@@ -397,7 +397,7 @@ fn readme() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
 }
 
-/// The published figure: `Savings Rate: 88.9% (recorded fixtures, 22 Invocations)`.
+/// The published figure: `Savings Rate: <n>% (recorded fixtures, <n> Invocations)`.
 /// Parsing it rather than containing it means the README line is a claim the
 /// test can hold to account, not decoration.
 fn published_claim(readme: &str) -> (String, usize) {

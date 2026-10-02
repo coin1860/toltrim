@@ -121,11 +121,11 @@ fn collapsed_count(text: &str, name: &str) -> usize {
 }
 
 #[test]
-fn the_plain_listing_keeps_every_file_and_collapses_only_noise() {
+fn the_plain_listing_keeps_every_entry_and_announces_no_collapse() {
     let raw = fixture("ls-project-root.txt");
     let out = render(&raw);
 
-    // Evidence: the real entries survive, including the recorded file names.
+    // Evidence: every real entry survives, including the recorded file names.
     for name in [
         "AGENTS.md",
         "Cargo.lock",
@@ -139,7 +139,7 @@ fn the_plain_listing_keeps_every_file_and_collapses_only_noise() {
     ] {
         assert!(out.contains(name), "{name} disappeared from:\n{out}");
     }
-    // Not a noise directory: normal directories stay as real entries.
+    // A real directory stays a real entry.
     assert!(
         has_entry(&out, "src"),
         "a real directory was collapsed:\n{out}"
@@ -149,23 +149,25 @@ fn the_plain_listing_keeps_every_file_and_collapses_only_noise() {
         "a real directory was collapsed:\n{out}"
     );
 
-    // Noise: a Noise directory collapses to one visible line that says what was
-    // elided. The fixture lists `node_modules` and `build`, and both collapse.
+    // A flat listing already gives each directory one line, so there is nothing
+    // to collapse: announcing one would add ` / (contents collapsed)` to a name
+    // and make the listing longer. Every Noise directory stays a name, and the
+    // rule costs nothing.
     for name in ["target", "node_modules", "build"] {
-        let line = collapse_line(&out, name);
         assert!(
-            line.contains("collapsed"),
-            "the collapse of {name} does not say that something was elided: {line}"
+            has_entry(&out, name),
+            "{name} is a Noise directory in a flat listing and must stay a name:\n{out}"
+        );
+        assert!(
+            !out.contains(&format!("{name}/ (")),
+            "{name} was announced as collapsed although nothing was elided:\n{out}"
         );
     }
-    assert!(!has_entry(&out, "build"), "build was not collapsed:\n{out}");
     assert!(
-        !has_entry(&out, "node_modules"),
-        "node_modules was not collapsed:\n{out}"
-    );
-    assert!(
-        !has_entry(&out, "target"),
-        "target was not collapsed:\n{out}"
+        out.len() <= raw.len(),
+        "the listing rule grew its input: {} bytes -> {} bytes",
+        raw.len(),
+        out.len()
     );
 }
 
@@ -536,13 +538,17 @@ fn hidden_entries_survive_in_every_listing_shape() {
 
 #[test]
 fn a_multi_column_listing_keeps_every_entry() {
-    let out = render(&fixture("ls-columns-project-root.txt"));
+    let raw = fixture("ls-columns-project-root.txt");
+    let out = render(&raw);
     for name in [
         "AGENTS.md",
         "Cargo.lock",
         "Cargo.toml",
         "README.md",
+        "build",
+        "node_modules",
         "src",
+        "target",
         "tests",
     ] {
         assert!(
@@ -550,12 +556,22 @@ fn a_multi_column_listing_keeps_every_entry() {
             "{name} was lost from a column listing:\n{out}"
         );
     }
+    // `ls -m` wraps after a separator, so the columns are read as one list. It is
+    // still a flat listing, though: a Noise directory is one name there, so
+    // nothing is elided and nothing is announced. The Floor keeps the listing
+    // from growing when reading the columns costs more than it saves.
     for name in ["target", "node_modules", "build"] {
         assert!(
-            collapse_line(&out, name).contains("collapsed"),
-            "{name} is not collapsed in a column listing:\n{out}"
+            !out.contains(&format!("{name}/ (")),
+            "{name} was announced as collapsed although nothing was elided:\n{out}"
         );
     }
+    assert!(
+        out.len() <= raw.len(),
+        "the listing rule grew its input: {} bytes -> {} bytes",
+        raw.len(),
+        out.len()
+    );
 }
 
 #[test]

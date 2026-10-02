@@ -24,7 +24,7 @@ fn render(tool: Tool, args: &[&str], raw: &str, code: i32, preserve: bool) -> St
 #[test]
 fn a_real_surefire_failure_keeps_the_assertion_that_explains_it() {
     let raw = fixture("mvn-test-fail-surefire.txt");
-    let out = render(Tool::Maven, &[], &raw, 1, false);
+    let out = render(Tool::Maven, &["test"], &raw, 1, false);
 
     // Must survive. The assertion line carries no `[ERROR]` prefix, so a rule
     // that kept only marked lines would drop it and leave the agent guessing.
@@ -64,7 +64,7 @@ fn a_real_surefire_failure_keeps_the_assertion_that_explains_it() {
 #[test]
 fn a_successful_run_becomes_one_line_per_module() {
     let raw = fixture("mvn-test-pass.txt");
-    let out = render(Tool::Maven, &[], &raw, 0, false);
+    let out = render(Tool::Maven, &["test"], &raw, 0, false);
 
     assert!(out.contains("demo: BUILD SUCCESS"), "got:\n{out}");
     assert!(out.contains("Tests run: 2, Failures: 0, Errors: 0, Skipped: 0"));
@@ -77,7 +77,7 @@ fn a_successful_run_becomes_one_line_per_module() {
 #[test]
 fn a_dependency_failure_keeps_the_cause() {
     let raw = fixture("mvn-dependency-resolution-failure.txt");
-    let out = render(Tool::Maven, &[], &raw, 1, false);
+    let out = render(Tool::Maven, &["test"], &raw, 1, false);
 
     assert!(
         out.contains("Could not resolve dependencies"),

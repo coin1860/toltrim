@@ -18,7 +18,12 @@ use crate::ansi;
 /// 2: the Maven failure extract learned that a plugin banner bounds a context
 /// window, so a compile-error extract no longer carries compile chatter (ticket
 /// 07). Extracts produced under version 1 measured different bytes.
-pub const RULES_VERSION: i64 = 2;
+///
+/// 3: `git log` stopped adding an omission line of its own, `git diff` stopped
+/// keeping `new file mode`/`deleted file mode`, a listing that would grow is left
+/// untouched, and Maven is only proxied for the ADR-0008 lifecycle. Every one of
+/// those changes the bytes a rule emits.
+pub const RULES_VERSION: i64 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
@@ -86,14 +91,34 @@ pub fn detect(program: &str) -> Tool {
     }
 }
 
+/// The Maven lifecycle phases ADR-0008 proxies, spelled as Maven spells them.
+///
+/// The ADR enumerates the lifecycle and leaves everything else out, so this list
+/// is the whole of Maven's proxied surface: `mvn deploy` uploads artifacts and
+/// `mvn spring-boot:run` starts an application, and neither is interpreted.
+pub const MAVEN_LIFECYCLE: &[&str] = &[
+    "test",
+    "verify",
+    "package",
+    "compile",
+    "install",
+    "clean",
+    "test-compile",
+    "integration-test",
+];
+
 /// Does a Trim rule exist for this exact Invocation?
 ///
-/// A command can name a Proxied tool and still be a Passthrough Command: ADR-0008
-/// keeps state-changing git subcommands (`add`, `commit`, `checkout`, …) out of
-/// the rules, and those are never interpreted.
+/// A command can name a Proxied tool and still be a Passthrough Command:
+/// ADR-0008 keeps state-changing git subcommands (`add`, `commit`, `checkout`, …)
+/// and Maven phases outside the lifecycle (`deploy`, `validate`, a plugin goal
+/// such as `dependency:tree`) out of the rules, and those are never interpreted.
 pub fn is_proxied(tool: Tool, args: &[String]) -> bool {
     match tool {
-        Tool::Maven | Tool::Listing => true,
+        Tool::Maven => {
+            subcommand(tool, args).is_some_and(|phase| MAVEN_LIFECYCLE.contains(&phase.as_str()))
+        }
+        Tool::Listing => true,
         Tool::Git => matches!(
             subcommand(tool, args).as_deref(),
             Some("status" | "diff" | "log" | "show" | "branch")
@@ -123,10 +148,54 @@ pub fn subcommand(tool: Tool, args: &[String]) -> Option<String> {
     }
 }
 
-/// The first argument that is not an option, so `mvn -q -DskipTests test` yields
-/// `test`. Maven's own flags are never inspected beyond this.
+/// Maven options that consume the argument after them, so that argument is a
+/// value rather than the phase: `mvn -f pom.xml test` runs `test`, not `pom.xml`.
+/// Options whose value is attached (`-DskipTests`, `-Pmyprofile`) are one token
+/// and need no entry here.
+const MAVEN_OPTIONS_WITH_VALUE: &[&str] = &[
+    "-f",
+    "--file",
+    "-s",
+    "--settings",
+    "-gs",
+    "--global-settings",
+    "-t",
+    "--toolchains",
+    "-gt",
+    "--global-toolchains",
+    "-pl",
+    "--projects",
+    "-P",
+    "--activate-profiles",
+    "-rf",
+    "--resume-from",
+    "-l",
+    "--log-file",
+    "-b",
+    "--builder",
+    "-T",
+    "--threads",
+];
+
+/// The first argument that is neither an option nor an option's value, so
+/// `mvn -q -f pom.xml test` yields `test`. Maven's own flags are never inspected
+/// beyond this.
 pub fn first_non_flag(args: &[String]) -> Option<String> {
-    args.iter().find(|a| !a.starts_with('-')).cloned()
+    let mut is_value = false;
+    for arg in args {
+        if is_value {
+            is_value = false;
+            continue;
+        }
+        if MAVEN_OPTIONS_WITH_VALUE.contains(&arg.as_str()) {
+            is_value = true;
+            continue;
+        }
+        if !arg.starts_with('-') {
+            return Some(arg.clone());
+        }
+    }
+    None
 }
 
 /// Flags whose whole purpose is to make output parseable by another program.
@@ -188,8 +257,10 @@ pub fn should_preserve(
 
 /// The pure render seam: the only way any Trim rule is reached.
 ///
-/// * Not valid UTF-8, or an Unknown tool: emit the bytes unchanged (ADR-0002), so
-///   a command we cannot trim behaves exactly as it would alone.
+/// * Not valid UTF-8, an Unknown tool, or a Proxied tool with no rule for this
+///   invocation: emit the bytes unchanged (ADR-0002, ADR-0008), so a command we
+///   cannot trim behaves exactly as it would alone — ANSI included, because a
+///   Passthrough Command has no rule set to preserve it from.
 /// * `preserve`: strip ANSI and remove nothing else.
 /// * Otherwise apply the tool's rule set.
 pub fn render(
@@ -202,7 +273,7 @@ pub fn render(
     let Ok(text) = std::str::from_utf8(stdout) else {
         return stdout.to_vec();
     };
-    if tool == Tool::Unknown {
+    if tool == Tool::Unknown || !is_proxied(tool, args) {
         return stdout.to_vec();
     }
     if preserve {
@@ -370,5 +441,77 @@ mod tests {
             Some("diff".into())
         );
         assert_eq!(subcommand(Tool::Listing, &args(&["-la"])), None);
+    }
+
+    #[test]
+    fn a_maven_option_that_takes_a_value_is_not_mistaken_for_the_phase() {
+        // `mvn -f pom.xml test` runs `test`; reading `pom.xml` as the phase would
+        // step out of the rules and leave the build untrimmed.
+        assert_eq!(
+            subcommand(Tool::Maven, &args(&["-f", "pom.xml", "test"])),
+            Some("test".into())
+        );
+        assert_eq!(
+            subcommand(Tool::Maven, &args(&["-pl", "core", "-am", "install"])),
+            Some("install".into())
+        );
+        assert_eq!(
+            subcommand(Tool::Maven, &args(&["-T", "4", "verify"])),
+            Some("verify".into())
+        );
+        // An attached value is its own token, so it needs no special case.
+        assert_eq!(
+            subcommand(Tool::Maven, &args(&["-Pmyprofile", "package"])),
+            Some("package".into())
+        );
+        // Nothing but options: there is no phase.
+        assert_eq!(subcommand(Tool::Maven, &args(&["-f", "pom.xml"])), None);
+        assert_eq!(subcommand(Tool::Maven, &args(&["-o", "-q"])), None);
+    }
+
+    #[test]
+    fn a_command_with_no_rule_reaches_the_caller_byte_for_byte() {
+        // `mvn deploy` is not an ADR-0008 lifecycle phase, so it is a Passthrough
+        // Command: the Maven rules must not touch it, however Maven-shaped its
+        // output is. `is_proxied` is what the seam consults, so the Gain Record's
+        // mode and the bytes the caller receives cannot disagree.
+        let maven = b"[INFO] BUILD SUCCESS\n[INFO] Total time: 0.5 s\n";
+        assert_eq!(
+            render(Tool::Maven, &args(&["deploy"]), maven, 0, false),
+            maven.to_vec()
+        );
+        assert_eq!(
+            render(Tool::Maven, &args(&["dependency:tree"]), maven, 0, false),
+            maven.to_vec()
+        );
+        // A state-changing git subcommand is untouched even when the caller asked
+        // for untrimmed output, so no ANSI is stripped from a Passthrough Command.
+        let git = b"\x1b[32mdiff --git a/x b/x\x1b[0m\n";
+        assert_eq!(
+            render(Tool::Git, &args(&["commit"]), git, 0, true),
+            git.to_vec()
+        );
+    }
+
+    #[test]
+    fn only_the_adr_0008_maven_lifecycle_is_proxied() {
+        for phase in MAVEN_LIFECYCLE {
+            assert!(
+                is_proxied(Tool::Maven, &args(&[phase])),
+                "`mvn {phase}` is an ADR-0008 phase but is not proxied"
+            );
+        }
+        // A phase the ADR does not enumerate, and a plugin goal, are Passthrough
+        // Commands: `mvn deploy` uploads and `mvn spring-boot:run` runs an app.
+        for phase in ["deploy", "validate", "site", "dependency:tree"] {
+            assert!(
+                !is_proxied(Tool::Maven, &args(&[phase])),
+                "`mvn {phase}` is not an ADR-0008 phase but is proxied"
+            );
+        }
+        // A bare `mvn` names no phase, and every listing is still proxied.
+        assert!(!is_proxied(Tool::Maven, &[]));
+        assert!(is_proxied(Tool::Listing, &args(&["-la"])));
+        assert!(is_proxied(Tool::Listing, &[]));
     }
 }

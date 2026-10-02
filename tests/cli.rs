@@ -442,8 +442,8 @@ fn the_readme_keeps_gradle_deferred_and_the_state_changing_git_commands_passthro
 }
 
 /// The git subcommands `is_proxied` itself enumerates, parsed out of
-/// `src/trim/mod.rs`. Git is the one family the code lists explicitly — Maven
-/// and the listings proxy every argument — so this is where a new rule can be
+/// `src/trim/mod.rs`. Git and Maven are the two families the code lists
+/// explicitly; the listings proxy every argument. This is where a new rule can be
 /// added to the code without touching any published list.
 fn proxied_git_subcommands() -> BTreeSet<String> {
     let source = checkout_file("src/trim/mod.rs");
@@ -490,6 +490,57 @@ fn every_git_subcommand_the_code_proxies_is_documented() {
         assert!(
             readme.contains(&format!("git {subcommand}")),
             "the code proxies `git {subcommand}` but README.md does not advertise it"
+        );
+    }
+}
+
+/// Maven phases the ADR deliberately leaves out of the rules. The drift guard
+/// above only proves that a documented command *is* proxied, which a wildcard
+/// arm satisfies for every argument; these are the converse, and they are what
+/// catches `mvn deploy` being swept in by `Tool::Maven => true`.
+const MAVEN_NOT_PROXIED: &[&str] = &[
+    "deploy",
+    "validate",
+    "site",
+    "generate-sources",
+    "process-resources",
+    "spring-boot:run",
+    "dependency:tree",
+    "help:evaluate",
+];
+
+#[test]
+fn a_maven_phase_outside_the_lifecycle_is_a_passthrough_command() {
+    for phase in MAVEN_NOT_PROXIED {
+        let args = vec![(*phase).to_string()];
+        assert!(
+            !trim::is_proxied(Tool::Maven, &args),
+            "`mvn {phase}` is not an ADR-0008 lifecycle phase but the code proxies it"
+        );
+        let advertised = format!("mvn {phase}");
+        assert!(
+            !FAMILIES.contains(&advertised.as_str()),
+            "`mvn {phase}` is advertised as a Proxied Command"
+        );
+    }
+
+    // And the lifecycle itself is still proxied, past the options that take a
+    // value: `mvn -f pom.xml test` runs `test`.
+    for args in [
+        vec!["test"],
+        vec!["-o", "verify"],
+        vec!["-q", "-DskipTests", "package"],
+        vec!["-f", "pom.xml", "compile"],
+        vec!["-pl", "core", "install"],
+        vec!["--projects", "core,api", "test-compile"],
+        vec!["-T", "4", "clean"],
+        vec!["-Pmyprofile", "integration-test"],
+    ] {
+        let args: Vec<String> = args.iter().map(|a| (*a).to_string()).collect();
+        assert!(
+            trim::is_proxied(Tool::Maven, &args),
+            "`mvn {}` is an ADR-0008 lifecycle phase but is not proxied",
+            args.join(" ")
         );
     }
 }

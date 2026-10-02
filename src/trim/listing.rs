@@ -1,6 +1,11 @@
-//! `ls`, `dir`, and `tree` share one rule set: a Noise directory collapses to
-//! one visible counted line, entries group by kind, and long lines are truncated
-//! with a marker.
+//! `ls`, `dir`, and `tree` share one rule set: a Noise directory whose contents
+//! or columns would otherwise be printed collapses to one visible counted line,
+//! entries group by kind, and long lines are truncated with a marker.
+//!
+//! A flat name listing — plain `ls`, `ls -1`, `ls -m` — is the one shape with
+//! nothing to collapse: it already prints each directory as a single name, so its
+//! Noise directories stay names rather than paying for a marker that elides
+//! nothing.
 //!
 //! The rule is a pure function of the listing text, so it never touches the
 //! filesystem and never starts a process. `render` receives text that has already
@@ -11,7 +16,8 @@
 //! `<no extension>` row, an `ls -R` header — is Evidence and is emitted
 //! unchanged. That is the Under-trimming Floor applied per line: an unrecognised
 //! line survives rather than disappearing, so a listing can never lose more than
-//! its Noise.
+//! its Noise. The same Floor is applied to the whole listing in bytes: a collapse
+//! that would cost more than it saves leaves the listing untouched.
 
 use std::fmt::Write as _;
 
@@ -31,9 +37,9 @@ const ELLIPSIS: char = '…';
 const TREE_CHILD: &str = "├── ";
 /// The guide a `tree` uses before its last child entry.
 const TREE_LAST_CHILD: &str = "└── ";
-/// The wording a flat `ls`/`dir` row uses for a Noise directory: the row does not
-/// enumerate what is inside, so the collapse states that its contents were not
-/// listed rather than inventing a count.
+/// The wording a row listing (`ls -l`, `ls -la`, `dir`) uses for a Noise
+/// directory: the row does not enumerate what is inside, so the collapse states
+/// that its contents were not listed rather than inventing a count.
 const NOISE_CONTENTS: &str = "contents collapsed";
 
 /// `text` has already had ANSI removed and is valid UTF-8.
@@ -71,6 +77,10 @@ pub fn render(text: &str) -> String {
             {
                 *slot = true;
             }
+            // The one visible line that records a collapse, in every listing
+            // shape: `<guides><name>/ (<what was elided>)`. It is rebuilt from
+            // the entry's own text so a `tree` keeps its connectors and a `dir`
+            // row keeps its columns.
             let detail = format!(
                 "{} {} collapsed",
                 subtree.entry_count,
@@ -122,12 +132,15 @@ pub fn render(text: &str) -> String {
                 // dash, underscore, or capital — is a summary or a sentence, not
                 // a list of entries. The line is Evidence and is kept as it is.
                 if !has_rows && entry.names_are_entries {
+                    // Every name is kept as a name, Noise directory or not. A
+                    // flat listing prints a Noise directory as one line already,
+                    // so there is nothing to elide; writing
+                    // `target/ (contents collapsed)` in its place would collapse
+                    // nothing and add twenty-one bytes. A `tree` and a row
+                    // listing are the shapes where a collapse really removes
+                    // something, and they mark it.
                     for name in &entry.names {
-                        if is_noise_name(name) {
-                            collapsed.push(truncate(&format!("{name}/ ({NOISE_CONTENTS})")).0);
-                        } else {
-                            files.push(truncate(name).0);
-                        }
+                        files.push(truncate(name).0);
                     }
                 } else {
                     // A row listing can still open with a header line, such as
@@ -167,6 +180,15 @@ pub fn render(text: &str) -> String {
     let mut joined = out.join("\n");
     if had_trailing_newline {
         joined.push('\n');
+    }
+    // The Under-trimming Floor, counted in bytes. Every other listing rule only
+    // ever removes text, but a collapse can add it: a flat `ls` already prints a
+    // Noise directory as one line, so replacing `target` with
+    // `target/ (contents collapsed)` costs twenty-one bytes and collapses
+    // nothing. When the rule has made the listing longer than the one it read, it
+    // has saved nothing, and the caller gets the original instead.
+    if joined.len() > text.len() {
+        return text.to_string();
     }
     joined
 }
@@ -557,11 +579,7 @@ fn tree_noise_subtree(entries: &[Entry], entry: &Entry) -> Option<Subtree> {
 // Rendering helpers
 // ---------------------------------------------------------------------------
 
-/// The one visible line that records a collapse, in every listing shape:
-/// `<guides><name>/ (<what was elided>)`.
-///
-/// The line is rebuilt from the entry's own text so a `tree` keeps its
-/// connectors and a `dir` row keeps its columns.
+/// The noun a collapse marker counts in: `1 entry`, `4 entries`.
 fn count_label(count: usize) -> &'static str {
     if count == 1 { "entry" } else { "entries" }
 }
@@ -735,22 +753,31 @@ mod tests {
     }
 
     #[test]
-    fn a_wrapped_comma_listing_collapses_its_noise_on_the_continuation_line() {
-        // `ls -m` wrapped after `src, `: `target` sits alone on the next line and
-        // carries no dot or dash, so a per-token reading would keep the line as a
-        // sentence and leave the Noise directory uncollapsed.
-        let out = render("AGENTS.md, Cargo.lock, build, src, \ntarget, tests\n");
-        assert!(
-            out.contains("target/ (contents collapsed)"),
-            "the wrapped Noise directory was not collapsed: {out:?}"
-        );
-        assert!(
-            out.contains("build/ (contents collapsed)"),
-            "the first-line Noise directory was not collapsed: {out:?}"
-        );
-        for name in ["AGENTS.md", "Cargo.lock", "src", "tests"] {
+    fn a_wrapped_comma_listing_keeps_every_name_and_announces_no_collapse() {
+        // `ls -m` wraps after a separator, so `target` sits alone on the
+        // continuation line and carries no dot or dash. `comma_line_of_entries`
+        // is what reads the pair as one listing rather than as a sentence; it is
+        // tested on its own below. It is still a flat listing, so a Noise
+        // directory stays a name and no marker is written.
+        let text = "AGENTS.md, Cargo.lock, build, src, \ntarget, tests\n";
+        let out = render(text);
+        for name in ["AGENTS.md", "Cargo.lock", "build", "src", "target", "tests"] {
             assert!(out.contains(name), "{name} was dropped from: {out:?}");
         }
+        assert!(
+            !out.contains(NOISE_CONTENTS),
+            "a flat listing announced a collapse that elides nothing: {out:?}"
+        );
+        assert!(out.len() <= text.len(), "the rule grew its input: {out:?}");
+    }
+
+    #[test]
+    fn a_collapse_that_would_cost_more_than_it_saves_leaves_the_listing_alone() {
+        // The one-entry Noise subtree is where a `tree` collapse is not worth its
+        // marker: eliding one line and writing `(1 entry collapsed)` in its place
+        // is longer than the two lines it removes. Under-trimming beats growing.
+        let text = "└── target\n    └── debug\n";
+        assert_eq!(render(text), text);
     }
 
     #[test]
@@ -849,14 +876,10 @@ mod tests {
     #[test]
     fn a_bare_name_line_splits_columns_without_losing_one() {
         // Two space-separated columns and a tab-separated one, as `ls -C` emits.
-        let out = render("index.html  README.md\ttarget  Cargo.toml\n");
-        for name in ["index.html", "README.md", "Cargo.toml"] {
+        let out = render("index.html  README.md\tsrc  Cargo.toml\n");
+        for name in ["index.html", "README.md", "src", "Cargo.toml"] {
             assert!(out.contains(name), "{name} was lost from: {out:?}");
         }
-        assert!(
-            out.contains("target/ (contents collapsed)"),
-            "a Noise directory in a column must still collapse: {out:?}"
-        );
     }
 
     #[test]

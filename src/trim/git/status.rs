@@ -59,8 +59,13 @@ pub fn render(text: &str, _exit_code: i32) -> String {
 }
 
 /// `git log`. Keeps hash, author, date, and subject for the most recent
-/// [`LOG_DEFAULT_LIMIT`] commits, states how many older commits were omitted,
-/// and drops bodies and the `Merge:`/`Author:`/`Date:` block decoration.
+/// [`LOG_DEFAULT_LIMIT`] commits, and drops bodies and the
+/// `Merge:`/`Author:`/`Date:` block decoration.
+///
+/// The cap is deliberately silent. toltrim adds no line of its own to a Proxied
+/// Command's stdout (spec.md:119, spec.md:371), so an agent reads git's output
+/// and nothing else; a summary line saying how many commits were held back would
+/// be toltrim's own sentence in the middle of a command's output.
 pub fn render_log(text: &str, _exit_code: i32) -> String {
     if text.is_empty() {
         return String::new();
@@ -79,15 +84,7 @@ pub fn render_log(text: &str, _exit_code: i32) -> String {
             .collect()
     };
 
-    let mut out: Vec<String> = commits.iter().take(LOG_DEFAULT_LIMIT).cloned().collect();
-    let omitted = commits.len().saturating_sub(LOG_DEFAULT_LIMIT);
-    if omitted > 0 {
-        out.push(format!(
-            "... {omitted} older commit{} omitted",
-            if omitted == 1 { "" } else { "s" }
-        ));
-    }
-
+    let out: Vec<String> = commits.iter().take(LOG_DEFAULT_LIMIT).cloned().collect();
     finish(out, trailing_newline)
 }
 

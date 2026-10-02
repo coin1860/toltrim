@@ -90,8 +90,10 @@ fn main() {
     let _ = stderr.flush();
     drop(stderr);
 
-    // Verbatim: `git diff` exits 1 when there are differences, and rewriting
-    // that would turn "there are changes" into "the command failed".
+    // Verbatim: the exit code is the command's. Plain `git diff` exits 0 even
+    // when there are differences, and `git diff --exit-code` is what exits 1;
+    // rewriting either would turn "there are changes" into "the command failed"
+    // or the reverse (ADR-0003).
     std::process::exit(outcome.code);
 }
 

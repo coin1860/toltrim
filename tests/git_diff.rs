@@ -206,8 +206,9 @@ fn a_machine_readable_request_is_preserved() {
 fn the_exit_code_is_never_reinterpreted() {
     let raw = fixture("git-diff-metadata.txt");
 
-    // `git diff` exits 1 when there are differences; `git show` exits 0. Neither
-    // number may change what is trimmed.
+    // Plain `git diff` exits 0 whether or not there are differences;
+    // `--exit-code` is what exits 1, and `git show` exits 0. Neither number may
+    // change what is trimmed, so both are fed in here.
     let differences = render(Tool::Git, &["diff"], &raw, 1, false);
     let clean = render(Tool::Git, &["diff"], &raw, 0, false);
     assert_eq!(

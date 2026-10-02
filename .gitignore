@@ -1,2 +1,4 @@
 /target
 /.checks
+/dist
+.DS_Store

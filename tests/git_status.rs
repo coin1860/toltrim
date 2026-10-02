@@ -176,16 +176,23 @@ fn a_log_defaults_to_the_most_recent_twenty_commits() {
             "commit {i} should have been kept:\n{out}"
         );
     }
-    // The older five are omitted, and the omission is stated rather than silent.
+    // The older five are omitted, and the cap is silent. toltrim adds no line of
+    // its own to a Proxied Command's stdout (spec.md:119), so an agent reads the
+    // twenty commits and nothing else.
     for i in 20..25 {
         assert!(
             !out.contains(&synthetic_hash(i)),
             "commit {i} should have been omitted:\n{out}"
         );
     }
+    assert_eq!(
+        out.lines().count(),
+        20,
+        "the cap must not add a line of its own:\n{out}"
+    );
     assert!(
-        out.contains("5 older commits omitted"),
-        "the omission was not stated:\n{out}"
+        !out.contains("omitted"),
+        "the omission was announced in the command's own output:\n{out}"
     );
 }
 
