@@ -1,0 +1,38 @@
+toltrim
+├── .env
+├── .git
+│   ├── objects
+│   │   └── pack
+│   └── refs
+│       └── heads
+├── .gitignore
+├── .idea
+│   └── inspectionProfiles
+├── AGENTS.md
+├── Cargo.lock
+├── Cargo.toml
+├── README.md
+├── build
+│   └── generated
+├── node_modules
+│   └── left-pad
+├── src
+│   ├── lib.rs
+│   ├── main.rs
+│   └── trim
+│       └── mod.rs
+├── target
+│   ├── CACHEDIR.TAG
+│   └── debug
+│       ├── deps
+│       │   ├── libserde-a1b2c3d4.rlib
+│       │   └── toltrim-9f8e7d6c5b4a3210
+│       ├── incremental
+│       │   └── toltrim-abc123
+│       │       └── session.bin
+│       ├── toltrim
+│       └── toltrim.d
+└── tests
+    └── smoke.rs
+
+19 directories, 16 files

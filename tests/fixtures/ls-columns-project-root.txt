@@ -1,0 +1,2 @@
+AGENTS.md, Cargo.lock, Cargo.toml, README.md, build, node_modules, src, 
+target, tests
