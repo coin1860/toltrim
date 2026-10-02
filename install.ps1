@@ -19,7 +19,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$Repo = if ($env:TOLTRIM_REPO) { $env:TOLTRIM_REPO } else { 'shaneshou/toltrim' }
+$Repo = if ($env:TOLTRIM_REPO) { $env:TOLTRIM_REPO } else { 'coin1860/toltrim' }
 if ($env:TOLTRIM_INSTALL_DIR) {
     $InstallDir = $env:TOLTRIM_INSTALL_DIR
 } elseif ($env:LOCALAPPDATA) {
@@ -48,7 +48,7 @@ OPTIONS:
 ENVIRONMENT:
     TOLTRIM_INSTALL_DIR   where the binary is installed
                           (default: %LOCALAPPDATA%\toltrim\bin)
-    TOLTRIM_REPO          owner/repo to download from (default: shaneshou/toltrim)
+    TOLTRIM_REPO          owner/repo to download from (default: coin1860/toltrim)
 
 Uninstalling is removing the one directory this script created.
 '@ | Write-Host

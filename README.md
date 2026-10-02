@@ -63,7 +63,7 @@ runtime dependency on a JDK**. It is a single self-contained executable.
 macOS and Linux:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/shaneshou/toltrim/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/coin1860/toltrim/main/install.sh | sh
 ```
 
 The script detects the operating system and architecture, maps them to a release
@@ -82,7 +82,7 @@ sh install.sh --help
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/shaneshou/toltrim/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/coin1860/toltrim/main/install.ps1 | iex
 ```
 
 The PowerShell script installs into `%LOCALAPPDATA%\toltrim\bin`, adds that

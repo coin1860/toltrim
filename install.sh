@@ -15,7 +15,7 @@
 set -eu
 
 # owner/repo to download from; a fork overrides it.
-REPO="${TOLTRIM_REPO:-shaneshou/toltrim}"
+REPO="${TOLTRIM_REPO:-coin1860/toltrim}"
 INSTALL_DIR="${TOLTRIM_INSTALL_DIR:-${HOME:-}/.local/bin}"
 VERSION="latest"
 
@@ -37,7 +37,7 @@ OPTIONS:
 
 ENVIRONMENT:
     TOLTRIM_INSTALL_DIR   where the binary is installed (default: ~/.local/bin)
-    TOLTRIM_REPO          owner/repo to download from (default: shaneshou/toltrim)
+    TOLTRIM_REPO          owner/repo to download from (default: coin1860/toltrim)
     TMPDIR                where the download is staged
 
 Uninstalling is removing the one file this script created.
