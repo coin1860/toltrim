@@ -1,0 +1,4 @@
+M  staged.txt
+ M unstaged.txt
+?? solo.txt
+?? target/
