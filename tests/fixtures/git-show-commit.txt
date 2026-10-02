@@ -1,0 +1,46 @@
+commit 84b495eafced22ae4495ec2e91765735751cd121
+Author: Fixture Recorder <fixture@example.invalid>
+Date:   Fri Oct 2 18:41:20 2026 +0800
+
+    fixture change with a rename, a mode change, and a missing trailing newline
+
+diff --git a/modify.txt b/modify.txt
+index 6d7ff92..fb5b8b6 100644
+--- a/modify.txt
++++ b/modify.txt
+@@ -3,7 +3,7 @@ modify line 2
+ modify line 3
+ modify line 4
+ modify line 5
+-modify line 6
++modify line 6 CHANGED
+ modify line 7
+ modify line 8
+ modify line 9
+diff --git a/old-name.txt b/new-name.txt
+similarity index 54%
+rename from old-name.txt
+rename to new-name.txt
+index 7a28df3..5bdb3ef 100644
+--- a/old-name.txt
++++ b/new-name.txt
+@@ -1,4 +1,4 @@
+ alpha
+ beta
+-gamma
++gamma CHANGED
+ delta
+diff --git a/nonewline.txt b/nonewline.txt
+index 04a584d..77b2c8b 100644
+--- a/nonewline.txt
++++ b/nonewline.txt
+@@ -1,3 +1,3 @@
+ first line
+ second line
+-last line without newline
+\ No newline at end of file
++last line CHANGED without newline
+\ No newline at end of file
+diff --git a/script.sh b/script.sh
+old mode 100644
+new mode 100755
