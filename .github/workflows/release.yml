@@ -1,0 +1,113 @@
+name: release
+
+# Release artifacts for the three platform families.
+#
+# A `v*` tag builds every archive and attaches them to that GitHub release; a
+# manual `workflow_dispatch` builds and uploads the same archives without
+# publishing a release, which is how a packaging change is exercised.
+#
+# Every build here is a `--release` Rust binary. The standard library is linked
+# in and `rusqlite`'s `bundled` feature compiles the SQLite amalgamation into the
+# executable, so the artifacts have no runtime dependency on Rust and no runtime
+# dependency on a JDK: they run on a machine with neither installed.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # The tag names the version when there is one; a manual dispatch takes the
+      # version from Cargo.toml, which is what the crate actually is.
+      - name: Determine the version
+        id: version
+        shell: bash
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="v$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -n 1)"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      # The archive holds the binary, the README that states what is supported,
+      # and the licence, under one versioned directory: toltrim-<version>-<target>.
+      - name: Package the tar.gz archive
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -eu
+          pkg="toltrim-${{ steps.version.outputs.version }}-${{ matrix.target }}"
+          mkdir -p "dist/${pkg}"
+          cp "target/${{ matrix.target }}/release/toltrim" "dist/${pkg}/"
+          cp README.md LICENSE "dist/${pkg}/"
+          tar -C dist -czf "dist/${pkg}.tar.gz" "${pkg}"
+
+      - name: Package the zip archive
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $pkg = "toltrim-${{ steps.version.outputs.version }}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force "dist/$pkg" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/toltrim.exe" "dist/$pkg/"
+          Copy-Item README.md, LICENSE "dist/$pkg/"
+          Compress-Archive -Path "dist/$pkg" -DestinationPath "dist/$pkg.zip" -Force
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: toltrim-${{ steps.version.outputs.version }}-${{ matrix.target }}
+          path: dist/toltrim-${{ steps.version.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
