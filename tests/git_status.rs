@@ -104,12 +104,24 @@ fn a_log_keeps_hash_author_date_and_subject() {
         out.contains("4cbcb58f0eb38faae723f4921967bfb561adab46"),
         "the commit hash was trimmed away:\n{out}"
     );
-    assert!(out.contains("Alice Example"), "the author was trimmed away:\n{out}");
-    assert!(out.contains("2024-03-20"), "the date was trimmed away:\n{out}");
-    assert!(out.contains("Rename the module"), "the subject was trimmed away:\n{out}");
+    assert!(
+        out.contains("Alice Example"),
+        "the author was trimmed away:\n{out}"
+    );
+    assert!(
+        out.contains("2024-03-20"),
+        "the date was trimmed away:\n{out}"
+    );
+    assert!(
+        out.contains("Rename the module"),
+        "the subject was trimmed away:\n{out}"
+    );
 
     // Evidence: the other commits are still findable.
-    assert!(out.contains("13c7d32abcfbc99d899acff659f3c0c3e0806c1c"), "got:\n{out}");
+    assert!(
+        out.contains("13c7d32abcfbc99d899acff659f3c0c3e0806c1c"),
+        "got:\n{out}"
+    );
     assert!(out.contains("2024-02-14"));
     assert!(out.contains("Fix the parser bug"));
     assert!(out.contains("4a9a39cbaf8803d36156831149c34a023731fd6e"));
@@ -126,7 +138,10 @@ fn a_log_keeps_hash_author_date_and_subject() {
         !out.contains("without a newline"),
         "a multi-line body line survived:\n{out}"
     );
-    assert!(!out.contains("Author:"), "the Author: label survived:\n{out}");
+    assert!(
+        !out.contains("Author:"),
+        "the Author: label survived:\n{out}"
+    );
     assert!(!out.contains("Date:"), "the Date: label survived:\n{out}");
 }
 
@@ -182,8 +197,14 @@ fn a_branch_listing_is_names_only_with_the_current_branch_marked() {
     let out = render(Tool::Git, &["branch"], &raw, 0, false);
 
     // Evidence: every branch name, in the order git printed them.
-    assert!(out.contains("feature/parser"), "a branch name was lost:\n{out}");
-    assert!(out.contains("release-1.0"), "a branch name was lost:\n{out}");
+    assert!(
+        out.contains("feature/parser"),
+        "a branch name was lost:\n{out}"
+    );
+    assert!(
+        out.contains("release-1.0"),
+        "a branch name was lost:\n{out}"
+    );
     // Evidence: git's own marker says which one is checked out.
     assert!(
         out.contains("* main\n"),
@@ -200,12 +221,24 @@ fn branch_decoration_is_dropped() {
     let raw = fixture("git-branch-verbose.txt");
     let out = render(Tool::Git, &["branch", "-v"], &raw, 0, false);
 
-    assert!(out.contains("feature/parser"), "a branch name was lost:\n{out}");
-    assert!(out.contains("release-1.0"), "a branch name was lost:\n{out}");
-    assert!(out.contains("* main"), "the current branch is not marked:\n{out}");
+    assert!(
+        out.contains("feature/parser"),
+        "a branch name was lost:\n{out}"
+    );
+    assert!(
+        out.contains("release-1.0"),
+        "a branch name was lost:\n{out}"
+    );
+    assert!(
+        out.contains("* main"),
+        "the current branch is not marked:\n{out}"
+    );
 
     assert!(!out.contains("[ahead"), "ahead decoration survived:\n{out}");
-    assert!(!out.contains("[behind"), "behind decoration survived:\n{out}");
+    assert!(
+        !out.contains("[behind"),
+        "behind decoration survived:\n{out}"
+    );
     assert!(
         !out.contains("Work on the parser"),
         "the verbose subject survived:\n{out}"

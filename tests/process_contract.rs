@@ -19,9 +19,9 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
 #[cfg(unix)]
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -160,7 +160,9 @@ fn finish(mut child: Child, label: &str) -> Finished {
             Ok(None) if Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
-                panic!("{label} was still running after {DEADLINE:?}: it blocked instead of finishing");
+                panic!(
+                    "{label} was still running after {DEADLINE:?}: it blocked instead of finishing"
+                );
             }
             Ok(None) => std::thread::sleep(POLL),
             Err(e) => panic!("cannot wait for {label}: {e}"),
@@ -201,7 +203,11 @@ fn exit_codes_are_forwarded_verbatim() {
             &name,
             &format!("printf 'stand-in ran\\n'\nexit {code}\n"),
         );
-        let run = run_toltrim(&dir, &[program.as_os_str()], &format!("the {code} stand-in"));
+        let run = run_toltrim(
+            &dir,
+            &[program.as_os_str()],
+            &format!("the {code} stand-in"),
+        );
         assert_eq!(
             run.code(),
             code,
@@ -305,7 +311,11 @@ fn with_no_terminal_on_stdin_an_interactive_command_fails_fast() {
     let dir = TempDir::new("stdin-null");
     // `read` would wait forever for a line no agent will ever type; with no
     // terminal on toltrim's stdin it must see end-of-file instead.
-    let program = stand_in(&dir, "standin-interactive", "read line\nprintf 'read returned\\n'\n");
+    let program = stand_in(
+        &dir,
+        "standin-interactive",
+        "read line\nprintf 'read returned\\n'\n",
+    );
 
     let started = Instant::now();
     let run = run_toltrim(
@@ -330,7 +340,11 @@ fn with_no_terminal_on_stdin_an_interactive_command_fails_fast() {
 #[test]
 fn a_stdin_pipe_that_is_never_written_does_not_block_the_run() {
     let dir = TempDir::new("stdin-pipe");
-    let program = stand_in(&dir, "standin-pipe", "read line\nprintf 'read returned\\n'\n");
+    let program = stand_in(
+        &dir,
+        "standin-pipe",
+        "read line\nprintf 'read returned\\n'\n",
+    );
 
     let mut cmd = toltrim(&dir, &[program.as_os_str()]);
     // Exactly what an agent hands toltrim: a non-terminal stdin that nobody
@@ -385,7 +399,10 @@ fn a_command_that_does_not_exist_exits_127_with_one_line_on_stderr() {
         1,
         "expected a single explanatory line, got {stderr:?}"
     );
-    assert!(stderr.ends_with('\n'), "the line must be terminated: {stderr:?}");
+    assert!(
+        stderr.ends_with('\n'),
+        "the line must be terminated: {stderr:?}"
+    );
     assert!(
         stderr.contains("toltrim-standin-that-does-not-exist"),
         "the line must name the command that could not be started: {stderr:?}"
@@ -441,7 +458,11 @@ fn a_proxied_command_forwards_stderr_verbatim_while_stdout_is_trimmed() {
     );
 
     let direct = run_stand_in(&mvn, "the maven stand-in alone");
-    let proxied = run_toltrim(&dir, &[mvn.as_os_str()], "the maven stand-in through toltrim");
+    let proxied = run_toltrim(
+        &dir,
+        &[mvn.as_os_str()],
+        "the maven stand-in through toltrim",
+    );
 
     assert_eq!(
         proxied.stderr, direct.stderr,

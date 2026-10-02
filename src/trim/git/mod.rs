@@ -48,8 +48,14 @@ mod tests {
 
     #[test]
     fn subcommand_is_found_past_path_options() {
-        assert_eq!(subcommand(&args(&["-C", "repo", "diff"])), Some("diff".into()));
-        assert_eq!(subcommand(&args(&["--no-pager", "log"])), Some("log".into()));
+        assert_eq!(
+            subcommand(&args(&["-C", "repo", "diff"])),
+            Some("diff".into())
+        );
+        assert_eq!(
+            subcommand(&args(&["--no-pager", "log"])),
+            Some("log".into())
+        );
         assert_eq!(subcommand(&args(&["status"])), Some("status".into()));
         assert_eq!(subcommand(&args(&[])), None);
     }

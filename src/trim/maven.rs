@@ -48,7 +48,11 @@ pub fn render(raw: &str, exit_code: i32) -> String {
     } else {
         failure_extract(&text, &lines)
     };
-    if body.is_empty() { body } else { format!("{body}\n") }
+    if body.is_empty() {
+        body
+    } else {
+        format!("{body}\n")
+    }
 }
 
 fn success_summary(lines: &[&str]) -> String {

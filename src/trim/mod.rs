@@ -160,9 +160,8 @@ fn machine_readable_short(tool: Tool) -> &'static [&'static str] {
 /// Did the caller ask for output that another program will parse?
 pub fn requests_machine_readable(tool: Tool, args: &[String]) -> bool {
     let shorts = machine_readable_short(tool);
-    args.iter().any(|arg| {
-        MACHINE_READABLE_LONG.contains(&arg.as_str()) || shorts.contains(&arg.as_str())
-    })
+    args.iter()
+        .any(|arg| MACHINE_READABLE_LONG.contains(&arg.as_str()) || shorts.contains(&arg.as_str()))
 }
 
 /// A person piping toltrim in a terminal looks like this: their shell gives us a
@@ -242,15 +241,24 @@ mod tests {
             Tool::Git,
             &args(&["status", "--porcelain"])
         ));
-        assert!(requests_machine_readable(Tool::Maven, &args(&["-q", "test"])));
+        assert!(requests_machine_readable(
+            Tool::Maven,
+            &args(&["-q", "test"])
+        ));
         assert!(!requests_machine_readable(Tool::Maven, &args(&["test"])));
     }
 
     #[test]
     fn short_flag_meanings_do_not_leak_across_tools() {
         // `-e` is --errors for Maven but --edit for git.
-        assert!(requests_machine_readable(Tool::Maven, &args(&["-e", "test"])));
-        assert!(!requests_machine_readable(Tool::Git, &args(&["commit", "-e"])));
+        assert!(requests_machine_readable(
+            Tool::Maven,
+            &args(&["-e", "test"])
+        ));
+        assert!(!requests_machine_readable(
+            Tool::Git,
+            &args(&["commit", "-e"])
+        ));
     }
 
     #[test]
@@ -273,39 +281,94 @@ mod tests {
     #[test]
     fn a_preserved_invocation_only_loses_ansi() {
         let bytes = b"\x1b[31mkept text\x1b[0m\n";
-        assert_eq!(render(Tool::Git, &args(&["diff"]), bytes, 0, true), b"kept text\n");
+        assert_eq!(
+            render(Tool::Git, &args(&["diff"]), bytes, 0, true),
+            b"kept text\n"
+        );
     }
 
     #[test]
     fn the_preservation_decision_is_process_free() {
         // `--raw` wins over everything.
-        assert!(should_preserve(true, Tool::Maven, &args(&["test"]), false, false));
+        assert!(should_preserve(
+            true,
+            Tool::Maven,
+            &args(&["test"]),
+            false,
+            false
+        ));
         // A Machine-Readable Request.
-        assert!(should_preserve(false, Tool::Git, &args(&["status", "--porcelain"]), false, false));
+        assert!(should_preserve(
+            false,
+            Tool::Git,
+            &args(&["status", "--porcelain"]),
+            false,
+            false
+        ));
         // A human piping in a terminal: stdout is not a tty, stdin is.
-        assert!(should_preserve(false, Tool::Maven, &args(&["test"]), false, true));
+        assert!(should_preserve(
+            false,
+            Tool::Maven,
+            &args(&["test"]),
+            false,
+            true
+        ));
         // An agent capturing output: neither stream is a terminal.
-        assert!(!should_preserve(false, Tool::Maven, &args(&["test"]), false, false));
-        assert!(!should_preserve(false, Tool::Git, &args(&["diff"]), true, true));
+        assert!(!should_preserve(
+            false,
+            Tool::Maven,
+            &args(&["test"]),
+            false,
+            false
+        ));
+        assert!(!should_preserve(
+            false,
+            Tool::Git,
+            &args(&["diff"]),
+            true,
+            true
+        ));
     }
 
     #[test]
     fn state_changing_git_subcommands_are_passthrough_commands() {
-        assert_eq!(classify(Tool::Git, &args(&["commit", "-m", "x"]), false), Mode::Passthrough);
+        assert_eq!(
+            classify(Tool::Git, &args(&["commit", "-m", "x"]), false),
+            Mode::Passthrough
+        );
         assert_eq!(classify(Tool::Git, &args(&["diff"]), false), Mode::Trimmed);
         assert_eq!(
-            classify(Tool::Git, &args(&["diff", "--stat"]), requests_machine_readable(Tool::Git, &args(&["diff", "--stat"]))),
+            classify(
+                Tool::Git,
+                &args(&["diff", "--stat"]),
+                requests_machine_readable(Tool::Git, &args(&["diff", "--stat"]))
+            ),
             Mode::Preserved
         );
-        assert_eq!(classify(Tool::Unknown, &args(&["gcloud", "x"]), false), Mode::Passthrough);
-        assert_eq!(classify(Tool::Maven, &args(&["test"]), true), Mode::Preserved);
-        assert_eq!(classify(Tool::Maven, &args(&["test"]), false), Mode::Trimmed);
+        assert_eq!(
+            classify(Tool::Unknown, &args(&["gcloud", "x"]), false),
+            Mode::Passthrough
+        );
+        assert_eq!(
+            classify(Tool::Maven, &args(&["test"]), true),
+            Mode::Preserved
+        );
+        assert_eq!(
+            classify(Tool::Maven, &args(&["test"]), false),
+            Mode::Trimmed
+        );
     }
 
     #[test]
     fn subcommands_are_found_past_options() {
-        assert_eq!(subcommand(Tool::Maven, &args(&["-q", "-DskipTests", "test"])), Some("test".into()));
-        assert_eq!(subcommand(Tool::Git, &args(&["-C", "repo", "diff"])), Some("diff".into()));
+        assert_eq!(
+            subcommand(Tool::Maven, &args(&["-q", "-DskipTests", "test"])),
+            Some("test".into())
+        );
+        assert_eq!(
+            subcommand(Tool::Git, &args(&["-C", "repo", "diff"])),
+            Some("diff".into())
+        );
         assert_eq!(subcommand(Tool::Listing, &args(&["-la"])), None);
     }
 }

@@ -314,7 +314,9 @@ fn short_date(rest: &str) -> String {
         return rest[..10].to_string();
     }
     let tokens: Vec<&str> = rest.split_whitespace().collect();
-    let month = tokens.iter().position(|token| month_number(token).is_some());
+    let month = tokens
+        .iter()
+        .position(|token| month_number(token).is_some());
     let year = tokens
         .iter()
         .find(|token| token.len() == 4 && token.bytes().all(|b| b.is_ascii_digit()));
@@ -328,7 +330,10 @@ fn short_date(rest: &str) -> String {
     });
     match (year, month, day) {
         (Some(year), Some(month), Some(day)) => {
-            format!("{year}-{:02}-{day:02}", month_number(tokens[month]).unwrap())
+            format!(
+                "{year}-{:02}-{day:02}",
+                month_number(tokens[month]).unwrap()
+            )
         }
         // An unrecognised date is Evidence in its original form.
         _ => rest.to_string(),
@@ -543,7 +548,10 @@ mod tests {
                      nothing added to commit but untracked files present (use \"git add\" to track)\n";
         let out = render(input, 0);
         assert!(out.contains("build/ (2 files)"), "got:\n{out}");
-        assert_eq!(out, "On branch main\nUntracked files:\n\tbuild/ (2 files)\n");
+        assert_eq!(
+            out,
+            "On branch main\nUntracked files:\n\tbuild/ (2 files)\n"
+        );
     }
 
     #[test]

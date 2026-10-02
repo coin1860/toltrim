@@ -79,7 +79,10 @@ fn a_dependency_failure_keeps_the_cause() {
     let raw = fixture("mvn-dependency-resolution-failure.txt");
     let out = render(Tool::Maven, &[], &raw, 1, false);
 
-    assert!(out.contains("Could not resolve dependencies"), "got:\n{out}");
+    assert!(
+        out.contains("Could not resolve dependencies"),
+        "got:\n{out}"
+    );
     assert!(out.contains("Cannot access central"));
     assert!(!out.contains("Help 1"));
 }

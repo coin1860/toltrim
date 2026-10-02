@@ -92,7 +92,11 @@ fn cmd_reports_missing(exit_code: i32, stderr: &[u8]) -> bool {
 }
 
 fn attempts() -> &'static [bool] {
-    if cfg!(windows) { &[false, true] } else { &[false] }
+    if cfg!(windows) {
+        &[false, true]
+    } else {
+        &[false]
+    }
 }
 
 fn attempt(program: &OsString, args: &[OsString], via_cmd: bool) -> std::io::Result<Outcome> {
@@ -163,7 +167,8 @@ mod tests {
     use super::*;
 
     /// The exact text `cmd.exe` prints, recorded from a Windows run.
-    const NOT_RECOGNIZED: &[u8] = b"'foo' is not recognized as an internal or external command,\r\n\
+    const NOT_RECOGNIZED: &[u8] =
+        b"'foo' is not recognized as an internal or external command,\r\n\
                                     operable program or batch file.\r\n";
 
     #[test]

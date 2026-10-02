@@ -71,7 +71,9 @@ fn strip_guides(line: &str) -> &str {
 /// The lines of a listing with any tree guides and indentation removed, so a
 /// flat listing and a tree can be compared by entry text alone.
 fn normalised(text: &str) -> Vec<String> {
-    text.lines().map(|line| strip_guides(line).to_string()).collect()
+    text.lines()
+        .map(|line| strip_guides(line).to_string())
+        .collect()
 }
 
 /// Does this listing carry `name` as an entry of its own? A long-listing row or
@@ -138,8 +140,14 @@ fn the_plain_listing_keeps_every_file_and_collapses_only_noise() {
         assert!(out.contains(name), "{name} disappeared from:\n{out}");
     }
     // Not a noise directory: normal directories stay as real entries.
-    assert!(has_entry(&out, "src"), "a real directory was collapsed:\n{out}");
-    assert!(has_entry(&out, "tests"), "a real directory was collapsed:\n{out}");
+    assert!(
+        has_entry(&out, "src"),
+        "a real directory was collapsed:\n{out}"
+    );
+    assert!(
+        has_entry(&out, "tests"),
+        "a real directory was collapsed:\n{out}"
+    );
 
     // Noise: a Noise directory collapses to one visible line that says what was
     // elided. The fixture lists `node_modules` and `build`, and both collapse.
@@ -155,7 +163,10 @@ fn the_plain_listing_keeps_every_file_and_collapses_only_noise() {
         !has_entry(&out, "node_modules"),
         "node_modules was not collapsed:\n{out}"
     );
-    assert!(!has_entry(&out, "target"), "target was not collapsed:\n{out}");
+    assert!(
+        !has_entry(&out, "target"),
+        "target was not collapsed:\n{out}"
+    );
 }
 
 #[test]
@@ -171,8 +182,14 @@ fn a_long_listing_keeps_kind_and_columns_and_collapses_noise() {
             "a file's long-listing row changed meaning:\n  was: {line}\n  out:\n{out}"
         );
     }
-    assert!(out.contains("drwxr-xr-x@"), "directory permissions were dropped:\n{out}");
-    assert!(out.contains("shaneshou"), "the owner column was dropped:\n{out}");
+    assert!(
+        out.contains("drwxr-xr-x@"),
+        "directory permissions were dropped:\n{out}"
+    );
+    assert!(
+        out.contains("shaneshou"),
+        "the owner column was dropped:\n{out}"
+    );
     // The kind column survives for directories too: they are still recognisable
     // as directories.
     assert!(
@@ -180,7 +197,10 @@ fn a_long_listing_keeps_kind_and_columns_and_collapses_noise() {
         "src is no longer shown as a directory:\n{out}"
     );
     // Hidden entries are entries like any other.
-    assert!(out.contains(".gitignore"), "a hidden file was dropped:\n{out}");
+    assert!(
+        out.contains(".gitignore"),
+        "a hidden file was dropped:\n{out}"
+    );
     assert!(out.contains(".env"), "a hidden file was dropped:\n{out}");
 
     // Noise collapses, and only for directories.
@@ -218,7 +238,10 @@ fn a_tree_collapses_a_noise_subtree_and_keeps_the_summary() {
     // Evidence: real entries survive at every depth.
     for name in ["src", "trim", "mod.rs", "tests", "smoke.rs", "README.md"] {
         assert!(raw.contains(name), "the fixture must record {name}");
-        assert!(out.contains(name), "{name} disappeared from the tree:\n{out}");
+        assert!(
+            out.contains(name),
+            "{name} disappeared from the tree:\n{out}"
+        );
     }
 
     // Noise: the whole subtree collapses to one line at the directory's
@@ -347,20 +370,38 @@ fn a_dir_listing_keeps_its_footer_as_evidence_and_collapses_noise() {
 
     // Evidence: the footer's file count and byte totals survive — they are what
     // proves how much was listed.
-    assert!(out.contains("9 File(s)"), "the file count was trimmed away:\n{out}");
+    assert!(
+        out.contains("9 File(s)"),
+        "the file count was trimmed away:\n{out}"
+    );
     assert!(
         out.contains("23,456 bytes"),
         "the byte total was trimmed away:\n{out}"
     );
-    assert!(out.contains("9 Dir(s)"), "the directory count was trimmed away:\n{out}");
-    assert!(out.contains("bytes free"), "the free-space line was trimmed away:\n{out}");
+    assert!(
+        out.contains("9 Dir(s)"),
+        "the directory count was trimmed away:\n{out}"
+    );
+    assert!(
+        out.contains("bytes free"),
+        "the free-space line was trimmed away:\n{out}"
+    );
 
     // Evidence: the entries themselves survive with their kind.
-    for name in ["AGENTS.md", "Cargo.toml", "README.md", "Cargo.lock", "src", "tests", ".env"] {
+    for name in [
+        "AGENTS.md",
+        "Cargo.toml",
+        "README.md",
+        "Cargo.lock",
+        "src",
+        "tests",
+        ".env",
+    ] {
         assert!(out.contains(name), "{name} disappeared from:\n{out}");
     }
     assert!(
-        out.lines().any(|l| l.contains("<DIR>") && l.ends_with("src")),
+        out.lines()
+            .any(|l| l.contains("<DIR>") && l.ends_with("src")),
         "src is no longer shown as a directory:\n{out}"
     );
 
@@ -373,7 +414,8 @@ fn a_dir_listing_keeps_its_footer_as_evidence_and_collapses_noise() {
         );
     }
     assert!(
-        !out.lines().any(|l| l.contains("<DIR>") && l.ends_with("target")),
+        !out.lines()
+            .any(|l| l.contains("<DIR>") && l.ends_with("target")),
         "target is still an ordinary dir row:\n{out}"
     );
 }
@@ -436,7 +478,10 @@ fn a_trailing_slash_does_not_change_how_a_listing_is_read() {
         ".gitignore",
     ] {
         assert!(relative.contains(name), "plain listing lost {name}");
-        assert!(trailing.contains(name), "trailing-slash listing lost {name}");
+        assert!(
+            trailing.contains(name),
+            "trailing-slash listing lost {name}"
+        );
     }
     for name in [".git", ".idea", "target", "node_modules", "build"] {
         assert!(
@@ -468,8 +513,14 @@ fn hidden_entries_survive_in_every_listing_shape() {
                 "{name} invented a hidden entry:\n{out}"
             );
         } else {
-            assert!(out.contains(".gitignore"), "{name} dropped a hidden entry:\n{out}");
-            assert!(out.contains(".env"), "{name} dropped a hidden entry:\n{out}");
+            assert!(
+                out.contains(".gitignore"),
+                "{name} dropped a hidden entry:\n{out}"
+            );
+            assert!(
+                out.contains(".env"),
+                "{name} dropped a hidden entry:\n{out}"
+            );
         }
         // `.git` is Noise by name, and only `.git` is. The collapse line names
         // the directory exactly, so `.gitignore` never triggers one.
@@ -486,8 +537,18 @@ fn hidden_entries_survive_in_every_listing_shape() {
 #[test]
 fn a_multi_column_listing_keeps_every_entry() {
     let out = render(&fixture("ls-columns-project-root.txt"));
-    for name in ["AGENTS.md", "Cargo.lock", "Cargo.toml", "README.md", "src", "tests"] {
-        assert!(out.contains(name), "{name} was lost from a column listing:\n{out}");
+    for name in [
+        "AGENTS.md",
+        "Cargo.lock",
+        "Cargo.toml",
+        "README.md",
+        "src",
+        "tests",
+    ] {
+        assert!(
+            out.contains(name),
+            "{name} was lost from a column listing:\n{out}"
+        );
     }
     for name in ["target", "node_modules", "build"] {
         assert!(

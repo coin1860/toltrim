@@ -59,14 +59,26 @@ const REACTOR_SUMMARY: [&str; 4] = [
 
 fn assert_reactor_summary(out: &str) {
     for line in REACTOR_SUMMARY {
-        assert!(out.contains(line), "missing Success Summary {line:?} in:\n{out}");
+        assert!(
+            out.contains(line),
+            "missing Success Summary {line:?} in:\n{out}"
+        );
     }
 
     // Attribution, module by module: no module is given another module's totals,
     // and the module that ran no tests carries no total at all.
-    assert!(!out.contains("alpha: BUILD SUCCESS | Tests run: 3"), "alpha got gamma's totals:\n{out}");
-    assert!(!out.contains("gamma: BUILD SUCCESS | Tests run: 2"), "gamma got alpha's totals:\n{out}");
-    assert!(!out.contains("beta: BUILD SUCCESS | Tests run"), "beta claimed tests it never ran:\n{out}");
+    assert!(
+        !out.contains("alpha: BUILD SUCCESS | Tests run: 3"),
+        "alpha got gamma's totals:\n{out}"
+    );
+    assert!(
+        !out.contains("gamma: BUILD SUCCESS | Tests run: 2"),
+        "gamma got alpha's totals:\n{out}"
+    );
+    assert!(
+        !out.contains("beta: BUILD SUCCESS | Tests run"),
+        "beta claimed tests it never ran:\n{out}"
+    );
 
     // The summary is one line per module in reactor order; that order is the
     // contract the ticket names, not an internal detail of a window.
@@ -78,7 +90,10 @@ fn assert_reactor_summary(out: &str) {
     ];
     let positions: Vec<usize> = order
         .iter()
-        .map(|label| out.find(label).unwrap_or_else(|| panic!("{label:?} missing from:\n{out}")))
+        .map(|label| {
+            out.find(label)
+                .unwrap_or_else(|| panic!("{label:?} missing from:\n{out}"))
+        })
         .collect();
     assert!(
         positions.windows(2).all(|pair| pair[0] < pair[1]),
@@ -116,20 +131,33 @@ fn a_compile_error_keeps_every_file_and_line_and_the_detail_that_explains_it() {
 
     // Every compilation error keeps its file and line: that pair is what lets an
     // agent open the right file, so no window may reach past it.
-    assert!(out.contains("Broken.java:[5,16] cannot find symbol"), "got:\n{out}");
     assert!(
-        out.contains("Broken.java:[9,16] incompatible types: int cannot be converted to java.lang.String"),
+        out.contains("Broken.java:[5,16] cannot find symbol"),
         "got:\n{out}"
     );
     assert!(
-        out.contains("Other.java:[5,21] incompatible types: java.lang.String cannot be converted to int"),
+        out.contains(
+            "Broken.java:[9,16] incompatible types: int cannot be converted to java.lang.String"
+        ),
+        "got:\n{out}"
+    );
+    assert!(
+        out.contains(
+            "Other.java:[5,21] incompatible types: java.lang.String cannot be converted to int"
+        ),
         "got:\n{out}"
     );
     // The `symbol:` / `location:` lines that explain the first error carry no
     // `[ERROR]` prefix, exactly like a Surefire assertion line, so a rule that
     // kept only marked lines would leave the agent without the cause.
-    assert!(out.contains("\n  symbol:   variable missingThing"), "got:\n{out}");
-    assert!(out.contains("\n  location: class demo.broken.Broken"), "got:\n{out}");
+    assert!(
+        out.contains("\n  symbol:   variable missingThing"),
+        "got:\n{out}"
+    );
+    assert!(
+        out.contains("\n  location: class demo.broken.Broken"),
+        "got:\n{out}"
+    );
     assert!(out.contains("COMPILATION ERROR"));
     assert!(out.contains("BUILD FAILURE"));
 
@@ -149,7 +177,10 @@ fn a_compile_error_keeps_every_file_and_line_and_the_detail_that_explains_it() {
     assert!(!out.contains("Re-run Maven using the -X switch"));
     // The progress bar overwrites itself with carriage returns; the failure
     // extract must not carry one into the agent's output.
-    assert!(!out.contains('\r'), "a carriage return leaked from the progress bar:\n{out}");
+    assert!(
+        !out.contains('\r'),
+        "a carriage return leaked from the progress bar:\n{out}"
+    );
 }
 
 #[test]
@@ -168,9 +199,15 @@ fn a_quiet_run_is_a_machine_readable_request_that_loses_only_ansi() {
     // and "nothing removed" cannot be satisfied by accident.
     let text = std::str::from_utf8(&bytes).expect("fixtures are valid UTF-8");
     let stripped = toltrim::ansi::strip(text).into_bytes();
-    assert_ne!(stripped, bytes, "the quiet fixture must carry ANSI codes to prove stripping");
+    assert_ne!(
+        stripped, bytes,
+        "the quiet fixture must carry ANSI codes to prove stripping"
+    );
     let out = trim::render(Tool::Maven, &args, &bytes, 1, true);
-    assert_eq!(out, stripped, "a quiet run must be passed through with ANSI stripped");
+    assert_eq!(
+        out, stripped,
+        "a quiet run must be passed through with ANSI stripped"
+    );
     let out = String::from_utf8(out).expect("ANSI-stripped output is valid UTF-8");
 
     // Evidence survives, because nothing was removed.
@@ -183,9 +220,18 @@ fn a_quiet_run_is_a_machine_readable_request_that_loses_only_ansi() {
     assert!(out.contains("[Help 1]"));
     assert!(out.contains("-e switch"));
     let trimmed = render(&["-q", "test"], text, 1, false);
-    assert!(trimmed.contains("expected: <7> but was: <2>"), "got:\n{trimmed}");
-    assert!(!trimmed.contains("Help 1"), "the trim rule should have dropped the help URL");
-    assert!(!trimmed.contains("-e switch"), "the trim rule should have dropped the re-run advice");
+    assert!(
+        trimmed.contains("expected: <7> but was: <2>"),
+        "got:\n{trimmed}"
+    );
+    assert!(
+        !trimmed.contains("Help 1"),
+        "the trim rule should have dropped the help URL"
+    );
+    assert!(
+        !trimmed.contains("-e switch"),
+        "the trim rule should have dropped the re-run advice"
+    );
 }
 
 #[test]
@@ -195,8 +241,15 @@ fn a_crlf_run_summarises_identically_to_its_lf_twin() {
 
     // Provenance: the Windows fixture is the recorded LF run with only its line
     // endings changed, so a difference in the output cannot come from elsewhere.
-    assert!(crlf.contains("\r\n"), "the Windows fixture must be CRLF-terminated");
-    assert_eq!(crlf.replace("\r\n", "\n"), lf, "CRLF fixture is not a pure line-ending conversion");
+    assert!(
+        crlf.contains("\r\n"),
+        "the Windows fixture must be CRLF-terminated"
+    );
+    assert_eq!(
+        crlf.replace("\r\n", "\n"),
+        lf,
+        "CRLF fixture is not a pure line-ending conversion"
+    );
 
     let out_lf = render(&[], &lf, 0, false);
     let out_crlf = render(&[], &crlf, 0, false);
@@ -204,8 +257,14 @@ fn a_crlf_run_summarises_identically_to_its_lf_twin() {
     // The same run, so the same Success Summary.
     assert_eq!(out_crlf, out_lf, "CRLF changed the Success Summary");
     // No carriage return survives, and a CRLF is not read as a blank line.
-    assert!(!out_crlf.contains('\r'), "a carriage return survived: {out_crlf:?}");
-    assert!(!out_crlf.contains("\n\n"), "a spurious blank line appeared: {out_crlf:?}");
+    assert!(
+        !out_crlf.contains('\r'),
+        "a carriage return survived: {out_crlf:?}"
+    );
+    assert!(
+        !out_crlf.contains("\n\n"),
+        "a spurious blank line appeared: {out_crlf:?}"
+    );
     // The same Evidence, and the same silence about the Noise.
     assert_reactor_summary(&out_crlf);
     assert_reactor_noise_is_gone(&out_crlf);

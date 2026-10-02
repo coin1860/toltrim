@@ -263,7 +263,11 @@ fn classify(index: usize, line: &str, is_tree: bool) -> Entry {
         // The bare line above the first connector, with no guide of its own,
         // names the tree's root. A top-level entry — `└── target` — has a guide
         // and is an entry, not the root.
-        let kind = if guides.is_empty() { Kind::Root } else { Kind::Tree };
+        let kind = if guides.is_empty() {
+            Kind::Root
+        } else {
+            Kind::Tree
+        };
         return Entry {
             index,
             kind,
@@ -354,7 +358,10 @@ fn tree_entry(line: &str) -> Option<(usize, &str, &str)> {
     let mut at = 0;
     let mut depth = 0;
     while let Some(rest) = line.get(at..) {
-        if let Some(rest) = rest.strip_prefix("\u{2502}   ").or_else(|| rest.strip_prefix("    ")) {
+        if let Some(rest) = rest
+            .strip_prefix("\u{2502}   ")
+            .or_else(|| rest.strip_prefix("    "))
+        {
             at = line.len() - rest.len();
             depth += 1;
             continue;
@@ -394,7 +401,11 @@ fn long_entry(line: &str) -> Option<(String, String, bool)> {
     if is_dir_date(tokens[0]) && is_clock(tokens[1]) {
         // `dir` prints `12:00 PM` on a 12-hour locale and `12:00` on a 24-hour
         // one; the name follows the size column either way.
-        let after_time = if matches!(tokens.get(2), Some(&"AM" | &"PM")) { 3 } else { 2 };
+        let after_time = if matches!(tokens.get(2), Some(&"AM" | &"PM")) {
+            3
+        } else {
+            2
+        };
         let column = tokens.get(after_time)?;
         let is_dir = *column == "<DIR>";
         if !is_dir && column.parse::<u64>().is_err() {
@@ -428,9 +439,7 @@ fn is_dir_date(token: &str) -> bool {
 }
 
 fn is_clock(token: &str) -> bool {
-    token.len() >= 4
-        && token.contains(':')
-        && token.chars().all(|c| c.is_ascii_digit() || c == ':')
+    token.len() >= 4 && token.contains(':') && token.chars().all(|c| c.is_ascii_digit() || c == ':')
 }
 
 /// The bare names on a line, as plain `ls`, `ls -1`, and `ls -m` print them.
@@ -717,7 +726,9 @@ mod tests {
         // A summary and a `dir` footer keep a count beside their word, and a count
         // is not a name: both must stay Evidence rather than becoming entries.
         assert!(!comma_line_of_entries("3 directories, 4 files"));
-        assert!(!comma_line_of_entries("               3 File(s)          1,024 bytes"));
+        assert!(!comma_line_of_entries(
+            "               3 File(s)          1,024 bytes"
+        ));
         // A comma used as a thousands separator is not an entry separator.
         assert!(!comma_line_of_entries("3, 4"));
         assert!(!comma_line_of_entries("no comma here"));
@@ -790,12 +801,14 @@ mod tests {
         ]);
         assert!(out.iter().any(|l| l.contains("Volume in drive C is OS")));
         assert!(
-            out.iter().any(|l| l.contains("3 File(s)") && l.contains("1,024 bytes")),
+            out.iter()
+                .any(|l| l.contains("3 File(s)") && l.contains("1,024 bytes")),
             "the byte footer is Evidence and must survive: {out:?}"
         );
         assert!(out.iter().any(|l| l.contains("src")));
         assert!(
-            out.iter().any(|l| l.contains("target/ (contents collapsed)")),
+            out.iter()
+                .any(|l| l.contains("target/ (contents collapsed)")),
             "got: {out:?}"
         );
     }
