@@ -6,4 +6,6 @@ When an Invocation asks for a parseable format (`--porcelain`, `-z`, `--color=al
 
 **Considered options**: flags only, dropping pipe detection entirely (simplest, but a human piping toltrim in a terminal silently gets a trimmed stream); non-terminal stdout means "never trim" (dead on arrival for the agent case).
 
-**Consequences**: `git diff` exits 1 when there are differences, and `git status --porcelain` uses 0/1 distinctly. An agent-facing proxy that helpfully normalized those would turn "there are changes" into "the command failed", inviting retries or needless rewrites.
+**Consequences**: `git status --porcelain` uses 0/1 distinctly, and `git diff --exit-code` exits 1 when there are differences. An agent-facing proxy that helpfully normalized those would turn "there are changes" into "the command failed", inviting retries or needless rewrites.
+
+**Corrected (found while implementing ticket 04).** This ADR originally said "`git diff` exits 1 when there are differences". That is folklore: on git 2.53, plain `git diff` exits **0** when there are differences; `--exit-code` (and `--quiet`) is what makes it exit 1. The decision is unchanged and is in fact strengthened — the rule set never reads the exit code at all, so no exit status, correct or otherwise, can change the trimmed output. See the `Comments` section of `.scratch/toltrim-mvp/issues/04-git-diff-and-show.md` for the measurement.
