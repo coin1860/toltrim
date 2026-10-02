@@ -28,7 +28,8 @@ const BOILERPLATE: &[&str] = &[
     "[Help 1] http",
 ];
 
-/// Context kept on each side of a failure line.
+/// Most context lines kept on each side of a failure line; a block boundary
+/// cuts the window short.
 const CONTEXT: usize = 6;
 /// How far a kept line may be extended towards its block boundaries.
 const MAX_BLOCK_EXTENSION: usize = 60;
@@ -170,13 +171,13 @@ fn expand_to_block(lines: &[&str], keep: &mut [bool]) {
         }
         let mut start = i;
         let mut steps = 0;
-        while start > 0 && steps < MAX_BLOCK_EXTENSION && is_block_body(lines[start - 1]) {
+        while start > 0 && steps < MAX_BLOCK_EXTENSION && !ends_block(lines[start - 1]) {
             start -= 1;
             steps += 1;
         }
         let mut end = i;
         let mut steps = 0;
-        while end + 1 < lines.len() && steps < MAX_BLOCK_EXTENSION && is_block_body(lines[end + 1]) {
+        while end + 1 < lines.len() && steps < MAX_BLOCK_EXTENSION && !ends_block(lines[end + 1]) {
             end += 1;
             steps += 1;
         }
@@ -187,22 +188,55 @@ fn expand_to_block(lines: &[&str], keep: &mut [bool]) {
     }
 }
 
-fn is_block_body(line: &str) -> bool {
-    !line.trim().is_empty()
-        && line.trim() != "[INFO]"
-        && !is_transfer_noise(line)
-        && !is_boilerplate(line)
+/// Keep a marker line and its context window. The window is a window on the
+/// failure's block, not on the file: it stops at the same boundaries the block
+/// extension stops at. Six lines of a plugin banner are six lines an agent
+/// cannot use, and a window that crossed the banner would walk back into the
+/// compile chatter that precedes every failure.
+fn keep_context(lines: &[&str], keep: &mut [bool], marker: usize) {
+    keep[marker] = true;
+    let mut back = marker;
+    let mut steps = 0;
+    while back > 0 && steps < CONTEXT && !ends_block(lines[back - 1]) {
+        back -= 1;
+        keep[back] = true;
+        steps += 1;
+    }
+    let mut forward = marker;
+    let mut steps = 0;
+    while forward + 1 < lines.len() && steps < CONTEXT && !ends_block(lines[forward + 1]) {
+        forward += 1;
+        keep[forward] = true;
+        steps += 1;
+    }
+}
+
+/// Lines that end a failure block. A block never reaches past one, so these
+/// decide what a stack trace or a javac diagnostic is allowed to bring with it.
+///
+/// A per-plugin banner is on the list because it is Noise that explains no
+/// failure, and because Maven prints one immediately before every failure: the
+/// plugin that failed is already named by the `Failed to execute goal` line.
+fn ends_block(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.is_empty()
+        || trimmed == "[INFO]"
+        || is_plugin_banner(line)
+        || is_transfer_noise(line)
+        || is_boilerplate(line)
+}
+
+/// `[INFO] --- compiler:3.13.0:compile (default-compile) @ demo ---`, and the
+/// `[INFO] ------…` rule Maven prints around it.
+fn is_plugin_banner(line: &str) -> bool {
+    line.trim_start().starts_with("[INFO] ---")
 }
 
 fn failure_extract(text: &str, lines: &[&str]) -> String {
     let mut keep = vec![false; lines.len()];
     for (i, line) in lines.iter().enumerate() {
         if is_marker(line) {
-            let from = i.saturating_sub(CONTEXT);
-            let to = (i + CONTEXT + 1).min(lines.len());
-            for slot in keep.iter_mut().take(to).skip(from) {
-                *slot = true;
-            }
+            keep_context(lines, &mut keep, i);
         }
     }
     expand_to_block(lines, &mut keep);
