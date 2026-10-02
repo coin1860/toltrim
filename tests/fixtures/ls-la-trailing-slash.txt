@@ -1,0 +1,16 @@
+total 0
+drwxr-xr-x@ 15 shaneshou  staff  480 Oct  2 18:41 .
+drwxr-xr-x@ 13 shaneshou  staff  416 Oct  2 18:41 ..
+-rw-r--r--@  1 shaneshou  staff    0 Oct  2 18:41 .env
+drwxr-xr-x@  5 shaneshou  staff  160 Oct  2 18:41 .git
+-rw-r--r--@  1 shaneshou  staff    0 Oct  2 18:41 .gitignore
+drwxr-xr-x@  3 shaneshou  staff   96 Oct  2 18:41 .idea
+-rw-r--r--@  1 shaneshou  staff    0 Oct  2 18:41 AGENTS.md
+-rw-r--r--@  1 shaneshou  staff    0 Oct  2 18:41 Cargo.lock
+-rw-r--r--@  1 shaneshou  staff    0 Oct  2 18:41 Cargo.toml
+-rw-r--r--@  1 shaneshou  staff    0 Oct  2 18:41 README.md
+drwxr-xr-x@  3 shaneshou  staff   96 Oct  2 18:41 build
+drwxr-xr-x@  3 shaneshou  staff   96 Oct  2 18:41 node_modules
+drwxr-xr-x@  5 shaneshou  staff  160 Oct  2 18:41 src
+drwxr-xr-x@  4 shaneshou  staff  128 Oct  2 18:41 target
+drwxr-xr-x@  3 shaneshou  staff   96 Oct  2 18:41 tests

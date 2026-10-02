@@ -1,0 +1,10 @@
+AGENTS.md
+Cargo.lock
+Cargo.toml
+README.md
+build
+node_modules
+spring-boot-starter-parent-3.2.1-sources-and-javadoc-dependencies-bundle-with-extra-metadata-for-offline-use-20240115.120000-1.jar
+src
+target
+tests
